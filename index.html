@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MMD GETCHA Recreation</title>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="scene" aria-label="Neon MMD-style stage recreation"></canvas>
+      <div class="hud" aria-hidden="false">
+        <div class="track">
+          <span>GETCHA</span>
+          <span>MMD / Eevee look</span>
+        </div>
+        <div class="controls">
+          <button class="icon-button" id="togglePlay" type="button" aria-label="Pause animation" title="Pause">
+            <span class="pause-icon"></span>
+          </button>
+          <button class="icon-button" id="cameraMode" type="button" aria-label="Change camera mode" title="Camera">
+            <span class="camera-icon"></span>
+          </button>
+        </div>
+      </div>
+      <div class="meter" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

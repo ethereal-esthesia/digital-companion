@@ -1,0 +1,239 @@
+:root {
+  color-scheme: dark;
+  --cyan: #49f4ff;
+  --cyan-soft: #97fbff;
+  --pink: #ff4fc8;
+  --ink: #05070d;
+  --panel: rgb(5 9 16 / 68%);
+  --line: rgb(146 249 255 / 44%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+#app {
+  position: relative;
+}
+
+#scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+#scene:active {
+  cursor: grabbing;
+}
+
+.hud {
+  position: absolute;
+  left: clamp(16px, 3vw, 36px);
+  right: clamp(16px, 3vw, 36px);
+  bottom: clamp(16px, 4vh, 36px);
+  z-index: 2;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.track {
+  min-width: 0;
+  padding: 11px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow:
+    0 0 28px rgb(73 244 255 / 18%),
+    inset 0 0 18px rgb(73 244 255 / 10%);
+  color: white;
+  backdrop-filter: blur(12px);
+}
+
+.track span {
+  display: block;
+  white-space: nowrap;
+}
+
+.track span:first-child {
+  font-size: clamp(18px, 2.1vw, 28px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.track span:last-child {
+  margin-top: 6px;
+  color: rgb(187 251 255 / 86%);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.icon-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: white;
+  box-shadow:
+    0 0 24px rgb(73 244 255 / 18%),
+    inset 0 0 16px rgb(255 79 200 / 8%);
+  backdrop-filter: blur(12px);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--cyan-soft);
+  outline-offset: 3px;
+}
+
+.pause-icon,
+.pause-icon::after {
+  display: block;
+  width: 6px;
+  height: 18px;
+  border-radius: 2px;
+  background: currentColor;
+  content: "";
+}
+
+.pause-icon {
+  position: relative;
+  transform: translateX(-5px);
+}
+
+.pause-icon::after {
+  position: absolute;
+  left: 10px;
+  top: 0;
+}
+
+.icon-button[data-state="paused"] .pause-icon {
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 16px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  transform: translateX(2px);
+}
+
+.icon-button[data-state="paused"] .pause-icon::after {
+  display: none;
+}
+
+.camera-icon {
+  width: 22px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.camera-icon::before {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  content: "";
+  transform: translate(5px, 1.5px);
+}
+
+.camera-icon::after {
+  position: absolute;
+  width: 8px;
+  height: 6px;
+  border-radius: 2px 2px 0 0;
+  background: currentColor;
+  content: "";
+  transform: translate(2px, -8px);
+}
+
+.meter {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(16px, 4vh, 35px);
+  z-index: 1;
+  display: grid;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 5px;
+  height: 48px;
+  transform: translateX(-50%);
+  opacity: 0.84;
+}
+
+.meter span {
+  width: clamp(4px, 0.55vw, 7px);
+  min-height: 7px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, var(--pink), var(--cyan));
+  box-shadow: 0 0 14px rgb(73 244 255 / 72%);
+  animation: beat 850ms ease-in-out infinite;
+}
+
+.meter span:nth-child(2n) {
+  animation-delay: -240ms;
+}
+
+.meter span:nth-child(3n) {
+  animation-delay: -420ms;
+}
+
+@keyframes beat {
+  0%,
+  100% {
+    height: 9px;
+  }
+
+  45% {
+    height: 45px;
+  }
+}
+
+@media (max-width: 680px) {
+  .hud {
+    align-items: start;
+    bottom: 14px;
+  }
+
+  .track {
+    max-width: calc(100vw - 124px);
+  }
+
+  .track span:last-child {
+    white-space: normal;
+  }
+
+  .meter {
+    display: none;
+  }
+}
