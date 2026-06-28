@@ -1,4 +1,5 @@
 node_modules/
 dist/
+local-resources/
 .DS_Store
 *.log

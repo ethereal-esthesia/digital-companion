@@ -1,0 +1,107 @@
+{
+  "source": {
+    "bvid": "BV1MsZtYCE4t",
+    "url": "https://www.bilibili.com/video/BV1MsZtYCE4t/",
+    "title": "油管上100万播放的MMD - MikuのGETCHA 其一",
+    "creator": "jza233",
+    "durationSeconds": 75,
+    "resolution": {
+      "width": 3840,
+      "height": 2160
+    },
+    "coverImage": "http://i2.hdslb.com/bfs/archive/a75c7873a22e657c910671c85b538901dae1462c.jpg",
+    "firstFrame": "http://i0.hdslb.com/bfs/storyff/n250401sa1omcqvthz4p8t3ugcokf5mp_firsti.jpg"
+  },
+  "localAssetRoot": "local-resources/original-video-assets/",
+  "assets": {
+    "stage": {
+      "name": "新场景 - HZ-D",
+      "sourceUrl": null,
+      "localPath": "stage/",
+      "ignoredLocalPath": "local-resources/original-video-assets/stage/",
+      "licenseStatus": "unknown-source-needed",
+      "licenseNotes": "stage/LICENSE_NOTES.md"
+    },
+    "music": {
+      "name": "初音ミク,GUMI,ギガP - GETCHA!",
+      "sourceUrl": null,
+      "localPath": "music/",
+      "ignoredLocalPath": "local-resources/original-video-assets/music/",
+      "licenseStatus": "no-redistribution-license-found",
+      "licenseNotes": "music/LICENSE_NOTES.md"
+    },
+    "model": {
+      "name": "つみ式ミクさんv2.1",
+      "creator": "つみだんご",
+      "sourceUrl": "https://www.nicovideo.jp/watch/sm29503530",
+      "localPath": "model/",
+      "ignoredLocalPath": "local-resources/original-video-assets/model/",
+      "distributionUrl": "https://bowlroll.net/file/112578",
+      "licenseStatus": "needs-bundled-readme-review",
+      "licenseNotes": "model/LICENSE_NOTES.md"
+    },
+    "motion": {
+      "name": "GETCHA!",
+      "creator": "apr(社会の窓P)",
+      "sourceUrl": "https://www.nicovideo.jp/watch/sm39269321",
+      "localPath": "motion/",
+      "ignoredLocalPath": "local-resources/original-video-assets/motion/",
+      "distributionUrl": "https://bowlroll.net/file/261196",
+      "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
+      "licenseStatus": "restricted-mmd-derived-tools-only",
+      "licenseNotes": "motion/LICENSE_NOTES.md"
+    },
+    "camera": {
+      "name": "GETCHA!",
+      "creator": "apr(社会の窓P)",
+      "sourceUrl": "https://www.nicovideo.jp/watch/sm39269321",
+      "localPath": "camera/",
+      "ignoredLocalPath": "local-resources/original-video-assets/camera/",
+      "distributionUrl": "https://bowlroll.net/file/261196",
+      "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
+      "licenseStatus": "restricted-mmd-derived-tools-only",
+      "licenseNotes": "camera/LICENSE_NOTES.md"
+    },
+    "facial": {
+      "name": "GETCHA!",
+      "creator": "apr(社会の窓P)",
+      "sourceUrl": "https://www.nicovideo.jp/watch/sm39269321",
+      "localPath": "facial/",
+      "ignoredLocalPath": "local-resources/original-video-assets/facial/",
+      "distributionUrl": "https://bowlroll.net/file/261196",
+      "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
+      "licenseStatus": "restricted-mmd-derived-tools-only",
+      "licenseNotes": "facial/LICENSE_NOTES.md"
+    },
+    "nodeTrees": [
+      {
+        "name": "RC皮肤预设V402",
+        "sourceUrl": "https://www.bilibili.com/video/BV19A411u7MG",
+        "localPath": "nodetree/",
+        "ignoredLocalPath": "local-resources/original-video-assets/nodetree/",
+        "licenseStatus": "needs-bundled-readme-or-permission",
+        "licenseNotes": "nodetree/LICENSE_NOTES.md"
+      },
+      {
+        "name": "RC选色抠图节点组",
+        "sourceUrl": "https://www.bilibili.com/video/BV1A3411V79D",
+        "localPath": "nodetree/",
+        "ignoredLocalPath": "local-resources/original-video-assets/nodetree/",
+        "licenseStatus": "needs-bundled-readme-or-permission",
+        "licenseNotes": "nodetree/LICENSE_NOTES.md"
+      }
+    ]
+  },
+  "software": [
+    "MikuMikuDance",
+    "Blender",
+    "Premiere Pro",
+    "SVFI"
+  ],
+  "render": "Eevee",
+  "plugins": [
+    "Cats",
+    "MMDBridge Material Importer",
+    "MMD tool"
+  ]
+}
