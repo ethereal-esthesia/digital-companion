@@ -56,6 +56,10 @@ body,
 
 .track {
   min-width: 0;
+}
+
+.track,
+.asset-status {
   padding: 11px 14px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -67,7 +71,10 @@ body,
   backdrop-filter: blur(12px);
 }
 
-.track span {
+.track span,
+.asset-status span,
+.asset-status strong,
+.asset-status small {
   display: block;
   white-space: nowrap;
 }
@@ -83,6 +90,44 @@ body,
   color: rgb(187 251 255 / 86%);
   font-size: 12px;
   line-height: 1;
+}
+
+.asset-status {
+  min-width: 138px;
+  margin-left: auto;
+  color: white;
+  text-align: right;
+}
+
+.asset-status span {
+  color: rgb(187 251 255 / 86%);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.asset-status strong {
+  margin-top: 5px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.asset-status small {
+  margin-top: 6px;
+  max-width: 190px;
+  overflow: hidden;
+  color: rgb(187 251 255 / 78%);
+  font-size: 11px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+}
+
+.asset-status[data-state="warning"] {
+  border-color: rgb(255 79 200 / 48%);
+  box-shadow:
+    0 0 26px rgb(255 79 200 / 16%),
+    inset 0 0 18px rgb(255 79 200 / 10%);
 }
 
 .controls {
@@ -223,6 +268,10 @@ body,
   .hud {
     align-items: start;
     bottom: 14px;
+  }
+
+  .asset-status {
+    display: none;
   }
 
   .track {

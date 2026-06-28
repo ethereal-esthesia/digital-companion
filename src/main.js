@@ -3,10 +3,12 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 
 const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
+const assetStatus = document.querySelector("#assetStatus");
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070d);
@@ -55,6 +57,7 @@ const drag = {
 let elapsed = 0;
 let playing = true;
 let cameraMode = 0;
+let localAssetState = null;
 
 const materials = {
   skin: new THREE.MeshStandardMaterial({
@@ -613,4 +616,20 @@ canvas.addEventListener("dblclick", (event) => {
 });
 
 window.addEventListener("resize", resize);
+
+loadLocalAssetConfig()
+  .then((state) => {
+    localAssetState = state;
+    window.localAssetState = state;
+    renderAssetStatus(state, assetStatus);
+  })
+  .catch((error) => {
+    assetStatus.dataset.state = "warning";
+    assetStatus.innerHTML = `
+      <span>Local assets</span>
+      <strong>0/0</strong>
+      <small>${error instanceof Error ? error.message : "Config unavailable"}</small>
+    `;
+  });
+
 render();
