@@ -10,6 +10,8 @@ const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
 const assetStatus = document.querySelector("#assetStatus");
+const queryParams = new URLSearchParams(window.location.search);
+const modelMode = queryParams.get("modelMode") === "clay" ? "clay" : "textured";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070d);
@@ -641,7 +643,7 @@ function frameLoadedModel(mesh) {
   mesh.position.x -= modelCenter.x;
   mesh.position.y -= modelBounds.min.y - 0.36;
   mesh.position.z -= modelCenter.z;
-  mesh.rotation.y = Math.PI;
+  mesh.rotation.y = 0;
   mesh.updateMatrixWorld(true);
 
   lookTarget.set(0, 2.05, 0);
@@ -666,7 +668,28 @@ function setModelMaterials(mesh) {
     }
     object.castShadow = true;
     object.frustumCulled = false;
-    object.material = previewMaterial;
+
+    if (modelMode === "clay") {
+      object.material = previewMaterial;
+      return;
+    }
+
+    const meshMaterials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+    meshMaterials.forEach((material) => {
+      material.side = THREE.DoubleSide;
+      material.transparent = material.transparent || material.opacity < 1;
+      material.depthWrite = material.opacity >= 1;
+      if (material.map) {
+        material.map.colorSpace = THREE.SRGBColorSpace;
+      }
+      if (material.color && material.emissive) {
+        material.emissive.copy(material.color).multiplyScalar(0.05);
+        material.emissiveIntensity = 0.35;
+      }
+      material.needsUpdate = true;
+    });
   });
 }
 
@@ -808,7 +831,7 @@ loadLocalAssetConfig()
     assetStatus.dataset.state = "ready";
     assetStatus.innerHTML = `
       <span>PMX model</span>
-      <strong>T-pose</strong>
+      <strong>${modelMode === "clay" ? "Clay" : "Textured"} T-pose</strong>
       <small>Loaded ${mesh.skeleton?.bones?.length || 0} bones</small>
     `;
   })
