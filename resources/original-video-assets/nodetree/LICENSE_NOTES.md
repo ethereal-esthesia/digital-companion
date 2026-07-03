@@ -11,8 +11,8 @@ Status: download links found; explicit license terms not found in public Bilibil
 
 ## Download Links Listed By Source Pages
 
-- Skin preset: `share.weiyun.com/OdFDVd2n`
-- Color-key node group: `pan.baidu.com/s/16P_Cc98hESoPUkhXCBttPQ?pwd=qbtv`
+- Skin preset: https://share.weiyun.com/OdFDVd2n
+- Color-key node group: https://pan.baidu.com/s/16P_Cc98hESoPUkhXCBttPQ?pwd=qbtv
 
 The Bilibili metadata for these pages marks `no_reprint: 1`. That flag applies to the videos; asset-file reuse still needs the asset's bundled terms or author permission.
 

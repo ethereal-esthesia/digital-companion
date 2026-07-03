@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite --host 127.0.0.1"
+    "preview": "vite --host 127.0.0.1",
+    "resources:download": "node scripts/download-resources.mjs",
+    "resources:open-manual": "node scripts/download-resources.mjs --open-manual"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
     "three": "^0.178.0",
+    "three-stdlib": "^2.36.1",
     "vite": "^7.0.0"
   }
 }

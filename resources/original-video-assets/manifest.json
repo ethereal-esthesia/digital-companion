@@ -10,25 +10,40 @@
       "height": 2160
     },
     "coverImage": "http://i2.hdslb.com/bfs/archive/a75c7873a22e657c910671c85b538901dae1462c.jpg",
-    "firstFrame": "http://i0.hdslb.com/bfs/storyff/n250401sa1omcqvthz4p8t3ugcokf5mp_firsti.jpg"
+    "firstFrame": "http://i0.hdslb.com/bfs/storyff/n250401sa1omcqvthz4p8t3ugcokf5mp_firsti.jpg",
+    "metadataApi": "https://api.bilibili.com/x/web-interface/view?bvid=BV1MsZtYCE4t",
+    "youtubeMirror": "https://www.youtube.com/watch?v=VM5E6-MyF4I"
   },
   "localAssetRoot": "local-resources/original-video-assets/",
   "assets": {
     "stage": {
       "name": "新场景 - HZ-D",
-      "sourceUrl": null,
+      "sourceUrl": "https://www.youtube.com/watch?v=VM5E6-MyF4I",
       "localPath": "stage/",
       "ignoredLocalPath": "local-resources/original-video-assets/stage/",
       "licenseStatus": "unknown-source-needed",
-      "licenseNotes": "stage/LICENSE_NOTES.md"
+      "licenseNotes": "stage/LICENSE_NOTES.md",
+      "distributionStatus": "not-publicly-distributed",
+      "downloadSources": []
     },
     "music": {
       "name": "初音ミク,GUMI,ギガP - GETCHA!",
-      "sourceUrl": null,
+      "sourceUrl": "https://www.nicovideo.jp/watch/sm37467451",
       "localPath": "music/",
       "ignoredLocalPath": "local-resources/original-video-assets/music/",
       "licenseStatus": "no-redistribution-license-found",
-      "licenseNotes": "music/LICENSE_NOTES.md"
+      "licenseNotes": "music/LICENSE_NOTES.md",
+      "streamingUrl": "https://lnk.to/aAWfxznZ",
+      "offVocalAndVocalsUrl": "https://xfs.jp/jxHc3C",
+      "youtubeUrl": "https://www.youtube.com/watch?v=KRVFPPYcJUc",
+      "downloadSources": [
+        {
+          "label": "OffVocal & Vocals",
+          "url": "https://xfs.jp/jxHc3C",
+          "mode": "manual",
+          "reason": "Audio rights are not cleared for repo/app redistribution."
+        }
+      ]
     },
     "model": {
       "name": "つみ式ミクさんv2.1",
@@ -38,7 +53,15 @@
       "ignoredLocalPath": "local-resources/original-video-assets/model/",
       "distributionUrl": "https://bowlroll.net/file/112578",
       "licenseStatus": "needs-bundled-readme-review",
-      "licenseNotes": "model/LICENSE_NOTES.md"
+      "licenseNotes": "model/LICENSE_NOTES.md",
+      "downloadSources": [
+        {
+          "label": "BowlRoll model archive",
+          "url": "https://bowlroll.net/file/112578",
+          "mode": "manual",
+          "reason": "Requires BowlRoll login; bundled README/license must be reviewed."
+        }
+      ]
     },
     "motion": {
       "name": "GETCHA!",
@@ -49,7 +72,19 @@
       "distributionUrl": "https://bowlroll.net/file/261196",
       "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
       "licenseStatus": "restricted-mmd-derived-tools-only",
-      "licenseNotes": "motion/LICENSE_NOTES.md"
+      "licenseNotes": "motion/LICENSE_NOTES.md",
+      "downloadSources": [
+        {
+          "label": "BowlRoll GETCHA motion archive",
+          "url": "https://bowlroll.net/file/261196",
+          "mode": "manual",
+          "reason": "Requires Nico like/password flow; terms restrict use to MMD/MMD-derived tools."
+        }
+      ],
+      "relatedSources": {
+        "choreography": "https://www.nicovideo.jp/watch/sm38028810",
+        "music": "https://www.nicovideo.jp/watch/sm37467451"
+      }
     },
     "camera": {
       "name": "GETCHA!",
@@ -60,7 +95,15 @@
       "distributionUrl": "https://bowlroll.net/file/261196",
       "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
       "licenseStatus": "restricted-mmd-derived-tools-only",
-      "licenseNotes": "camera/LICENSE_NOTES.md"
+      "licenseNotes": "camera/LICENSE_NOTES.md",
+      "downloadSources": [
+        {
+          "label": "BowlRoll GETCHA motion/camera archive",
+          "url": "https://bowlroll.net/file/261196",
+          "mode": "manual",
+          "reason": "Same archive and restrictions as motion data."
+        }
+      ]
     },
     "facial": {
       "name": "GETCHA!",
@@ -71,7 +114,15 @@
       "distributionUrl": "https://bowlroll.net/file/261196",
       "termsUrl": "https://apr-mmd.hatenablog.jp/entry/ar384801",
       "licenseStatus": "restricted-mmd-derived-tools-only",
-      "licenseNotes": "facial/LICENSE_NOTES.md"
+      "licenseNotes": "facial/LICENSE_NOTES.md",
+      "downloadSources": [
+        {
+          "label": "BowlRoll GETCHA motion/facial archive",
+          "url": "https://bowlroll.net/file/261196",
+          "mode": "manual",
+          "reason": "Same archive and restrictions as motion data."
+        }
+      ]
     },
     "nodeTrees": [
       {
@@ -80,7 +131,15 @@
         "localPath": "nodetree/",
         "ignoredLocalPath": "local-resources/original-video-assets/nodetree/",
         "licenseStatus": "needs-bundled-readme-or-permission",
-        "licenseNotes": "nodetree/LICENSE_NOTES.md"
+        "licenseNotes": "nodetree/LICENSE_NOTES.md",
+        "downloadSources": [
+          {
+            "label": "Weiyun download from Bilibili description",
+            "url": "https://share.weiyun.com/OdFDVd2n",
+            "mode": "manual",
+            "reason": "Cloud-drive download may require browser interaction; bundled terms must be checked."
+          }
+        ]
       },
       {
         "name": "RC选色抠图节点组",
@@ -88,7 +147,15 @@
         "localPath": "nodetree/",
         "ignoredLocalPath": "local-resources/original-video-assets/nodetree/",
         "licenseStatus": "needs-bundled-readme-or-permission",
-        "licenseNotes": "nodetree/LICENSE_NOTES.md"
+        "licenseNotes": "nodetree/LICENSE_NOTES.md",
+        "downloadSources": [
+          {
+            "label": "Baidu Pan download from Bilibili description",
+            "url": "https://pan.baidu.com/s/16P_Cc98hESoPUkhXCBttPQ?pwd=qbtv",
+            "mode": "manual",
+            "reason": "Cloud-drive download may require browser interaction; bundled terms must be checked."
+          }
+        ]
       }
     ]
   },

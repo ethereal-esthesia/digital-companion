@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { MMDLoader } from "three-stdlib";
 import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 
 const canvas = document.querySelector("#scene");
@@ -58,6 +59,8 @@ let elapsed = 0;
 let playing = true;
 let cameraMode = 0;
 let localAssetState = null;
+let realDancer = null;
+let activeDancer = null;
 
 const materials = {
   skin: new THREE.MeshStandardMaterial({
@@ -134,6 +137,29 @@ scene.add(magentaLight);
 
 const stage = new THREE.Group();
 scene.add(stage);
+
+const modelPreview = new THREE.Group();
+modelPreview.visible = false;
+scene.add(modelPreview);
+
+const modelAmbientLight = new THREE.AmbientLight(0xffffff, 1.35);
+modelAmbientLight.visible = false;
+scene.add(modelAmbientLight);
+
+const modelFillLight = new THREE.DirectionalLight(0xffffff, 2.1);
+modelFillLight.position.set(0, 4.5, 6);
+modelFillLight.visible = false;
+scene.add(modelFillLight);
+
+const modelSideLight = new THREE.PointLight(0x9df9ff, 5, 12, 2);
+modelSideLight.position.set(-3.8, 2.6, 2.5);
+modelSideLight.visible = false;
+scene.add(modelSideLight);
+
+const modelHairLight = new THREE.PointLight(0xffffff, 1.8, 8, 2);
+modelHairLight.position.set(2.5, 3.8, 3.2);
+modelHairLight.visible = false;
+scene.add(modelHairLight);
 
 function addBox(parent, size, position, material, rotation = [0, 0, 0]) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
@@ -267,6 +293,45 @@ function buildStage() {
     shards.setMatrixAt(i, dummy.matrix);
   }
   stage.add(shards);
+}
+
+function buildModelPreview() {
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(2.8, 96),
+    new THREE.MeshPhysicalMaterial({
+      color: 0x101820,
+      roughness: 0.44,
+      metalness: 0.18,
+      clearcoat: 0.4
+    })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0.34;
+  modelPreview.add(floor);
+
+  const ring = createTorus(
+    2.82,
+    0.012,
+    new THREE.MeshBasicMaterial({
+      color: 0x9df9ff,
+      transparent: true,
+      opacity: 0.55
+    }),
+    [0, 0.36, 0],
+    [Math.PI / 2, 0, 0]
+  );
+  modelPreview.add(ring);
+
+  const guideMaterial = new THREE.LineBasicMaterial({
+    color: 0x9df9ff,
+    transparent: true,
+    opacity: 0.28
+  });
+  const guideGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-2.2, 1.72, 0),
+    new THREE.Vector3(2.2, 1.72, 0)
+  ]);
+  modelPreview.add(new THREE.Line(guideGeometry, guideMaterial));
 }
 
 function makeLimb(length, radius, material) {
@@ -456,10 +521,15 @@ function createDancer() {
 }
 
 buildStage();
+buildModelPreview();
 const dancer = createDancer();
+activeDancer = dancer;
 
 const lookTarget = new THREE.Vector3(0, 2.1, 0);
 const orbitTarget = new THREE.Vector3();
+const modelBounds = new THREE.Box3();
+const modelCenter = new THREE.Vector3();
+const modelSize = new THREE.Vector3();
 
 function animateDancer(t) {
   const parts = dancer.userData.parts;
@@ -512,13 +582,20 @@ function animateStage(t) {
 }
 
 function updateCamera(t) {
+  if (realDancer && !drag.active && Math.abs(drag.yaw) <= 0.001 && Math.abs(drag.pitch) <= 0.001) {
+    camera.position.set(0, 2.45, 6.4);
+    camera.rotation.z = 0;
+    camera.lookAt(0, 1.88, 0);
+    return;
+  }
+
   if (drag.active || Math.abs(drag.yaw) > 0.001 || Math.abs(drag.pitch) > 0.001) {
-    const radius = 10.5;
+    const radius = realDancer ? 6.4 : 10.5;
     const yaw = drag.yaw + t * 0.08;
-    const pitch = THREE.MathUtils.clamp(0.36 + drag.pitch, 0.05, 0.88);
+    const pitch = THREE.MathUtils.clamp(0.36 + drag.pitch, 0.05, realDancer ? 0.62 : 0.88);
     camera.position.set(
       Math.sin(yaw) * radius,
-      1.4 + Math.sin(pitch) * 5.6,
+      1.25 + Math.sin(pitch) * (realDancer ? 3.3 : 5.6),
       Math.cos(yaw) * radius
     );
     camera.lookAt(lookTarget);
@@ -547,14 +624,113 @@ function updateCamera(t) {
   }
 }
 
+function frameLoadedModel(mesh) {
+  mesh.updateMatrixWorld(true);
+  modelBounds.setFromObject(mesh);
+  modelBounds.getCenter(modelCenter);
+  modelBounds.getSize(modelSize);
+
+  const height = Math.max(modelSize.y, 0.001);
+  const scale = 3.05 / height;
+  mesh.scale.setScalar(scale);
+  mesh.updateMatrixWorld(true);
+
+  modelBounds.setFromObject(mesh);
+  modelBounds.getCenter(modelCenter);
+  modelBounds.getSize(modelSize);
+  mesh.position.x -= modelCenter.x;
+  mesh.position.y -= modelBounds.min.y - 0.36;
+  mesh.position.z -= modelCenter.z;
+  mesh.rotation.y = Math.PI;
+  mesh.updateMatrixWorld(true);
+
+  lookTarget.set(0, 2.05, 0);
+  cameraMode = 1;
+  drag.yaw = 0;
+  drag.pitch = 0;
+}
+
+function setModelMaterials(mesh) {
+  const previewMaterial = new THREE.MeshStandardMaterial({
+    color: 0x9fdbe5,
+    roughness: 0.52,
+    metalness: 0.04,
+    emissive: 0x051b1f,
+    emissiveIntensity: 0.18,
+    side: THREE.DoubleSide
+  });
+
+  mesh.traverse((object) => {
+    if (!object.isMesh) {
+      return;
+    }
+    object.castShadow = true;
+    object.frustumCulled = false;
+    object.material = previewMaterial;
+  });
+}
+
+function loadConfiguredModel(state) {
+  const modelAsset = state.assets.find((asset) => asset.name === "model");
+  if (!modelAsset?.ok || !modelAsset.url) {
+    return Promise.resolve(null);
+  }
+
+  assetStatus.dataset.state = "ready";
+  assetStatus.innerHTML = `
+    <span>Local model</span>
+    <strong>Loading</strong>
+    <small>${modelAsset.path}</small>
+  `;
+
+  const loader = new MMDLoader();
+  return new Promise((resolve, reject) => {
+    loader.load(
+      modelAsset.url,
+      (mesh) => {
+        realDancer = mesh;
+        realDancer.name = "Tsumi Miku local PMX";
+        setModelMaterials(realDancer);
+        frameLoadedModel(realDancer);
+        scene.add(realDancer);
+        dancer.visible = false;
+        stage.visible = false;
+        modelPreview.visible = true;
+        modelAmbientLight.visible = true;
+        modelFillLight.visible = true;
+        modelSideLight.visible = true;
+        modelHairLight.visible = true;
+        scene.fog = null;
+        activeDancer = realDancer;
+        window.localModelDebug = {
+          name: realDancer.name,
+          bones: realDancer.skeleton?.bones?.length || 0,
+          position: realDancer.position.toArray(),
+          scale: realDancer.scale.toArray(),
+          visible: realDancer.visible
+        };
+        resolve(realDancer);
+      },
+      undefined,
+      reject
+    );
+  });
+}
+
 function render() {
   requestAnimationFrame(render);
   const delta = clock.getDelta();
   if (playing) {
     elapsed += delta;
   }
-  animateDancer(elapsed);
-  animateStage(elapsed);
+  if (!realDancer) {
+    animateDancer(elapsed);
+    animateStage(elapsed);
+  } else {
+    rimLight.intensity = 2.5;
+    magentaLight.intensity = 1.2;
+    bloom.strength = 0.06;
+  }
   updateCamera(elapsed);
   composer.render();
 }
@@ -609,7 +785,7 @@ canvas.addEventListener("dblclick", (event) => {
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(dancer, true)[0];
+  const hit = raycaster.intersectObject(activeDancer, true)[0];
   if (hit) {
     cameraMode = 1;
   }
@@ -622,6 +798,19 @@ loadLocalAssetConfig()
     localAssetState = state;
     window.localAssetState = state;
     renderAssetStatus(state, assetStatus);
+    return loadConfiguredModel(state);
+  })
+  .then((mesh) => {
+    if (!mesh) {
+      return;
+    }
+    window.localModel = mesh;
+    assetStatus.dataset.state = "ready";
+    assetStatus.innerHTML = `
+      <span>PMX model</span>
+      <strong>T-pose</strong>
+      <small>Loaded ${mesh.skeleton?.bones?.length || 0} bones</small>
+    `;
   })
   .catch((error) => {
     assetStatus.dataset.state = "warning";

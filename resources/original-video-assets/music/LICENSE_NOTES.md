@@ -11,6 +11,7 @@ Status: no app/repo redistribution license found.
 - Nico music page: https://www.nicovideo.jp/watch/sm37467451
 - Streaming/download landing page: https://lnk.to/aAWfxznZ
 - YouTube official MV: https://www.youtube.com/watch?v=KRVFPPYcJUc
+- OffVocal & Vocals link from Nico description: https://xfs.jp/jxHc3C
 
 The Nico page links streaming services and an `OffVocal & Vocals` download, but that does not by itself grant permission to redistribute audio in this repo or app.
 
