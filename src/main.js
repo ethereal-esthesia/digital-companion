@@ -11,7 +11,16 @@ const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
 const assetStatus = document.querySelector("#assetStatus");
 const queryParams = new URLSearchParams(window.location.search);
-const modelMode = queryParams.get("modelMode") === "clay" ? "clay" : "textured";
+
+const DEFAULT_MODEL_PREVIEW_OPTIONS = {
+  mode: "textured",
+  lighting: "native",
+  materialBoost: false,
+  materialBoostStrength: 0.35,
+  bloomStrength: 0.02
+};
+
+let modelPreviewOptions = { ...DEFAULT_MODEL_PREVIEW_OPTIONS };
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070d);
@@ -626,6 +635,71 @@ function updateCamera(t) {
   }
 }
 
+function parseBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
+function pickChoice(value, choices, fallback) {
+  return choices.includes(value) ? value : fallback;
+}
+
+function getModelPreviewOptions(sceneConfig) {
+  const configured = sceneConfig?.modelPreview || {};
+  const mode = pickChoice(
+    queryParams.get("modelMode") || configured.mode || configured.modelMode,
+    ["textured", "clay"],
+    DEFAULT_MODEL_PREVIEW_OPTIONS.mode
+  );
+  const lighting = pickChoice(
+    queryParams.get("modelLighting") || configured.lighting,
+    ["native", "enhanced"],
+    DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
+  );
+  const materialBoost = parseBoolean(
+    queryParams.get("materialBoost") ?? configured.materialBoost,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoost
+  );
+  const materialBoostStrength = Number(
+    queryParams.get("materialBoostStrength") ??
+      configured.materialBoostStrength ??
+      DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength
+  );
+  const bloomStrength = Number(
+    queryParams.get("modelBloom") ?? configured.bloomStrength ?? DEFAULT_MODEL_PREVIEW_OPTIONS.bloomStrength
+  );
+
+  return {
+    mode,
+    lighting,
+    materialBoost,
+    materialBoostStrength: Number.isFinite(materialBoostStrength)
+      ? THREE.MathUtils.clamp(materialBoostStrength, 0, 1)
+      : DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength,
+    bloomStrength: Number.isFinite(bloomStrength)
+      ? THREE.MathUtils.clamp(bloomStrength, 0, 0.6)
+      : DEFAULT_MODEL_PREVIEW_OPTIONS.bloomStrength
+  };
+}
+
+function applyModelPreviewLighting() {
+  const enhanced = modelPreviewOptions.lighting === "enhanced";
+
+  modelAmbientLight.intensity = enhanced ? 1.35 : 0.35;
+  modelFillLight.intensity = enhanced ? 2.1 : 0.75;
+  modelSideLight.intensity = enhanced ? 5 : 0.9;
+  modelHairLight.intensity = enhanced ? 1.8 : 0.45;
+  rimLight.intensity = enhanced ? 2.5 : 0.7;
+  magentaLight.intensity = enhanced ? 1.2 : 0.25;
+  bloom.enabled = modelPreviewOptions.bloomStrength > 0;
+  bloom.strength = modelPreviewOptions.bloomStrength;
+}
+
 function frameLoadedModel(mesh) {
   mesh.updateMatrixWorld(true);
   modelBounds.setFromObject(mesh);
@@ -669,7 +743,7 @@ function setModelMaterials(mesh) {
     object.castShadow = true;
     object.frustumCulled = false;
 
-    if (modelMode === "clay") {
+    if (modelPreviewOptions.mode === "clay") {
       object.material = previewMaterial;
       return;
     }
@@ -684,9 +758,11 @@ function setModelMaterials(mesh) {
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;
       }
-      if (material.color && material.emissive) {
-        material.emissive.copy(material.color).multiplyScalar(0.05);
-        material.emissiveIntensity = 0.35;
+      if (modelPreviewOptions.materialBoost && material.color && material.emissive) {
+        material.emissive.copy(material.color).multiplyScalar(
+          modelPreviewOptions.materialBoostStrength * 0.15
+        );
+        material.emissiveIntensity = modelPreviewOptions.materialBoostStrength;
       }
       material.needsUpdate = true;
     });
@@ -711,6 +787,7 @@ function loadConfiguredModel(state) {
     loader.load(
       modelAsset.url,
       (mesh) => {
+        modelPreviewOptions = getModelPreviewOptions(state.scene);
         realDancer = mesh;
         realDancer.name = "Tsumi Miku local PMX";
         setModelMaterials(realDancer);
@@ -724,6 +801,7 @@ function loadConfiguredModel(state) {
         modelSideLight.visible = true;
         modelHairLight.visible = true;
         scene.fog = null;
+        applyModelPreviewLighting();
         activeDancer = realDancer;
         window.localModelDebug = {
           name: realDancer.name,
@@ -750,9 +828,7 @@ function render() {
     animateDancer(elapsed);
     animateStage(elapsed);
   } else {
-    rimLight.intensity = 2.5;
-    magentaLight.intensity = 1.2;
-    bloom.strength = 0.06;
+    applyModelPreviewLighting();
   }
   updateCamera(elapsed);
   composer.render();
@@ -831,8 +907,8 @@ loadLocalAssetConfig()
     assetStatus.dataset.state = "ready";
     assetStatus.innerHTML = `
       <span>PMX model</span>
-      <strong>${modelMode === "clay" ? "Clay" : "Textured"} T-pose</strong>
-      <small>Loaded ${mesh.skeleton?.bones?.length || 0} bones</small>
+      <strong>${modelPreviewOptions.mode === "clay" ? "Clay" : "Textured"} T-pose</strong>
+      <small>${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${modelPreviewOptions.materialBoostStrength}` : ""} · bloom ${modelPreviewOptions.bloomStrength} · ${mesh.skeleton?.bones?.length || 0} bones</small>
     `;
   })
   .catch((error) => {

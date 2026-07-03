@@ -9,6 +9,13 @@
       "title": "GETCHA local assets",
       "artist": "Giga & KIRA",
       "notes": "Copy this file to local-resources/original-video-assets/config.json and point each entry at user-supplied local assets.",
+      "modelPreview": {
+        "mode": "textured",
+        "lighting": "native",
+        "materialBoost": false,
+        "materialBoostStrength": 0.35,
+        "bloomStrength": 0.02
+      },
       "assets": {
         "model": {
           "path": "model/put-model-here.pmx",
