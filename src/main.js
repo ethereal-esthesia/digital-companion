@@ -9,22 +9,40 @@ import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
+const stageLightingSlider = document.querySelector("#stageLighting");
+const stageLightingControl = stageLightingSlider.closest(".stage-light-control");
 const assetStatus = document.querySelector("#assetStatus");
 const queryParams = new URLSearchParams(window.location.search);
 
 const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   mode: "textured",
+  materialPreset: "native",
   lighting: "native",
+  stageLighting: 0,
   materialBoost: false,
   materialBoostStrength: 0.35,
   bloomStrength: 0.02
 };
 
+const BLINK_MORPH_NAMES = ["まばたき", "blink", "Blink", "BLINK"];
+const BLINK_CLOSE_RATIO = 0.32;
+const BLINK_HOLD_RATIO = 0.18;
+
+const blinkController = {
+  targets: [],
+  clock: 0,
+  active: false,
+  time: 0,
+  duration: 0.16,
+  nextAt: THREE.MathUtils.randFloat(1.2, 3.4),
+  doubleBlinkQueued: false
+};
+
 let modelPreviewOptions = { ...DEFAULT_MODEL_PREVIEW_OPTIONS };
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05070d);
-scene.fog = new THREE.FogExp2(0x05070d, 0.038);
+scene.background = new THREE.Color(0xffffff);
+scene.fog = null;
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -34,6 +52,7 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0xffffff, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.04;
 
@@ -132,18 +151,21 @@ const materials = {
   })
 };
 
-scene.add(new THREE.HemisphereLight(0x9df9ff, 0x08080e, 0.85));
+const stageAmbientLight = new THREE.HemisphereLight(0x9df9ff, 0x08080e, 0.85);
+scene.add(stageAmbientLight);
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.7);
-keyLight.position.set(-5, 8, 5);
+keyLight.position.set(0, 4.4, 6.4);
 scene.add(keyLight);
+keyLight.target.position.set(0, 1.65, 0);
+scene.add(keyLight.target);
 
 const rimLight = new THREE.PointLight(0x4ff6ff, 9, 26, 2);
-rimLight.position.set(0, 4.5, -5.6);
+rimLight.position.set(-2.4, 3.1, 5.3);
 scene.add(rimLight);
 
 const magentaLight = new THREE.PointLight(0xff4fc8, 4.5, 22, 2);
-magentaLight.position.set(-4.8, 3, 2);
+magentaLight.position.set(2.4, 3, 5.1);
 scene.add(magentaLight);
 
 const stage = new THREE.Group();
@@ -152,6 +174,7 @@ scene.add(stage);
 const modelPreview = new THREE.Group();
 modelPreview.visible = false;
 scene.add(modelPreview);
+let modelGuideLine = null;
 
 const modelAmbientLight = new THREE.AmbientLight(0xffffff, 1.35);
 modelAmbientLight.visible = false;
@@ -309,11 +332,10 @@ function buildStage() {
 function buildModelPreview() {
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(2.8, 96),
-    new THREE.MeshPhysicalMaterial({
-      color: 0x101820,
-      roughness: 0.44,
-      metalness: 0.18,
-      clearcoat: 0.4
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      toneMapped: false
     })
   );
   floor.rotation.x = -Math.PI / 2;
@@ -326,7 +348,7 @@ function buildModelPreview() {
     new THREE.MeshBasicMaterial({
       color: 0x9df9ff,
       transparent: true,
-      opacity: 0.55
+      opacity: 0.36
     }),
     [0, 0.36, 0],
     [Math.PI / 2, 0, 0]
@@ -342,7 +364,9 @@ function buildModelPreview() {
     new THREE.Vector3(-2.2, 1.72, 0),
     new THREE.Vector3(2.2, 1.72, 0)
   ]);
-  modelPreview.add(new THREE.Line(guideGeometry, guideMaterial));
+  modelGuideLine = new THREE.Line(guideGeometry, guideMaterial);
+  modelGuideLine.name = "modelPreviewGuideLine";
+  modelPreview.add(modelGuideLine);
 }
 
 function makeLimb(length, radius, material) {
@@ -645,6 +669,28 @@ function parseBoolean(value, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+function parseUnitInterval(value, fallback = 0) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  const normalized = String(value).toLowerCase();
+  if (["true", "yes", "on"].includes(normalized)) {
+    return 1;
+  }
+  if (["false", "no", "off"].includes(normalized)) {
+    return 0;
+  }
+
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? THREE.MathUtils.clamp(amount, 0, 1)
+    : fallback;
+}
+
 function pickChoice(value, choices, fallback) {
   return choices.includes(value) ? value : fallback;
 }
@@ -661,9 +707,18 @@ function getModelPreviewOptions(sceneConfig) {
     ["native", "enhanced"],
     DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
   );
+  const materialPreset = pickChoice(
+    queryParams.get("modelMaterialPreset") || configured.materialPreset,
+    ["native", "video"],
+    DEFAULT_MODEL_PREVIEW_OPTIONS.materialPreset
+  );
   const materialBoost = parseBoolean(
     queryParams.get("materialBoost") ?? configured.materialBoost,
     DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoost
+  );
+  const stageLighting = parseUnitInterval(
+    queryParams.get("stageLighting") ?? configured.stageLighting,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.stageLighting
   );
   const materialBoostStrength = Number(
     queryParams.get("materialBoostStrength") ??
@@ -676,7 +731,9 @@ function getModelPreviewOptions(sceneConfig) {
 
   return {
     mode,
+    materialPreset,
     lighting,
+    stageLighting,
     materialBoost,
     materialBoostStrength: Number.isFinite(materialBoostStrength)
       ? THREE.MathUtils.clamp(materialBoostStrength, 0, 1)
@@ -687,9 +744,137 @@ function getModelPreviewOptions(sceneConfig) {
   };
 }
 
+function randomBlinkDelay() {
+  return THREE.MathUtils.randFloat(2.6, 6.4);
+}
+
+function randomBlinkDuration() {
+  return THREE.MathUtils.randFloat(0.12, 0.18);
+}
+
+function smoothStep(value) {
+  const t = THREE.MathUtils.clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function setBlinkWeight(weight) {
+  blinkController.targets.forEach((target) => {
+    target.object.morphTargetInfluences[target.index] = weight;
+  });
+  document.documentElement.dataset.blinkWeight = weight > 0.001 ? weight.toFixed(2) : "0";
+}
+
+function scheduleNextBlink(delay = randomBlinkDelay()) {
+  blinkController.nextAt = blinkController.clock + delay;
+}
+
+function startBlink() {
+  blinkController.active = true;
+  blinkController.time = 0;
+  blinkController.duration = randomBlinkDuration();
+  blinkController.doubleBlinkQueued = Math.random() < 0.12;
+}
+
+function configureBlink(mesh) {
+  const targets = [];
+
+  mesh.traverse((object) => {
+    if (!object.morphTargetDictionary || !object.morphTargetInfluences) {
+      return;
+    }
+
+    const morphName = BLINK_MORPH_NAMES.find(
+      (name) => object.morphTargetDictionary[name] !== undefined
+    );
+
+    if (morphName) {
+      targets.push({
+        object,
+        name: morphName,
+        index: object.morphTargetDictionary[morphName]
+      });
+    }
+  });
+
+  blinkController.targets = targets;
+  blinkController.clock = 0;
+  blinkController.active = false;
+  blinkController.time = 0;
+  blinkController.doubleBlinkQueued = false;
+  scheduleNextBlink(THREE.MathUtils.randFloat(1.2, 3.2));
+  document.documentElement.dataset.blinkMorphs = targets.map((target) => target.name).join(",");
+  setBlinkWeight(0);
+
+  return targets;
+}
+
+function updateBlink(delta) {
+  if (blinkController.targets.length === 0) {
+    return;
+  }
+
+  blinkController.clock += delta;
+
+  if (!blinkController.active && blinkController.clock >= blinkController.nextAt) {
+    startBlink();
+  }
+
+  if (!blinkController.active) {
+    return;
+  }
+
+  blinkController.time += delta;
+
+  const closeTime = blinkController.duration * BLINK_CLOSE_RATIO;
+  const holdTime = blinkController.duration * BLINK_HOLD_RATIO;
+  const openStart = closeTime + holdTime;
+  const openTime = Math.max(blinkController.duration - openStart, 0.001);
+  let weight = 0;
+
+  if (blinkController.time < closeTime) {
+    weight = smoothStep(blinkController.time / closeTime);
+  } else if (blinkController.time < openStart) {
+    weight = 1;
+  } else if (blinkController.time < blinkController.duration) {
+    weight = 1 - smoothStep((blinkController.time - openStart) / openTime);
+  } else {
+    blinkController.active = false;
+    weight = 0;
+    scheduleNextBlink(
+      blinkController.doubleBlinkQueued
+        ? THREE.MathUtils.randFloat(0.14, 0.28)
+        : randomBlinkDelay()
+    );
+    blinkController.doubleBlinkQueued = false;
+  }
+
+  setBlinkWeight(weight);
+}
+
+function includesAny(value, words) {
+  return words.some((word) => value.includes(word));
+}
+
+function setMaterialColor(material, color) {
+  if (material.color) {
+    material.color.set(color);
+  }
+}
+
+function setMaterialEmissive(material, color, intensity) {
+  if (material.emissive) {
+    material.emissive.set(color);
+    material.emissiveIntensity = intensity;
+  }
+}
+
 function applyModelPreviewLighting() {
   const enhanced = modelPreviewOptions.lighting === "enhanced";
+  const previewingModel = Boolean(realDancer);
+  const stageLightingAmount = previewingModel ? modelPreviewOptions.stageLighting : 1;
 
+  stageAmbientLight.intensity = 0.85 * stageLightingAmount;
+  keyLight.intensity = 2.7 * stageLightingAmount;
   modelAmbientLight.intensity = enhanced ? 1.35 : 0.35;
   modelFillLight.intensity = enhanced ? 2.1 : 0.75;
   modelSideLight.intensity = enhanced ? 5 : 0.9;
@@ -698,6 +883,53 @@ function applyModelPreviewLighting() {
   magentaLight.intensity = enhanced ? 1.2 : 0.25;
   bloom.enabled = modelPreviewOptions.bloomStrength > 0;
   bloom.strength = modelPreviewOptions.bloomStrength;
+}
+
+function updateStageLightingSlider() {
+  const amount = THREE.MathUtils.clamp(modelPreviewOptions.stageLighting, 0, 1);
+  const label = `Stage lighting ${Math.round(amount * 100)}%`;
+
+  stageLightingSlider.value = amount.toFixed(2);
+  stageLightingSlider.setAttribute("aria-valuetext", label);
+  stageLightingSlider.title = label;
+  stageLightingControl.dataset.state = amount > 0 ? "active" : "";
+  stageLightingControl.title = label;
+  document.documentElement.dataset.stageLighting = amount.toFixed(2);
+}
+
+function setStageLighting(value) {
+  modelPreviewOptions.stageLighting = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
+  updateStageLightingSlider();
+  applyModelPreviewLighting();
+  if (window.localModelDebug) {
+    window.localModelDebug.stageLighting = modelPreviewOptions.stageLighting;
+  }
+}
+
+function applyVideoMaterialPreset(material) {
+  const name = `${material.name || ""}`.toLowerCase();
+
+  if (includesAny(name, ["髪", "ツインテ"])) {
+    setMaterialColor(material, 0x7df6ff);
+    setMaterialEmissive(material, 0x002c32, 0.08);
+  } else if (includesAny(name, ["ネクタイ"])) {
+    setMaterialColor(material, 0x58f2f5);
+    setMaterialEmissive(material, 0x00383b, 0.08);
+  } else if (includesAny(name, ["ブーツ", "アームカバー", "スカート", "スパッツ", "下着"])) {
+    setMaterialColor(material, 0x32383d);
+    setMaterialEmissive(material, 0x000000, 0);
+  } else if (includesAny(name, ["上着", "タンクトップ"])) {
+    setMaterialColor(material, 0xd8e0e2);
+    setMaterialEmissive(material, 0x000000, 0);
+  } else if (includesAny(name, ["頭", "顔", "体"])) {
+    setMaterialColor(material, 0xffe1d4);
+    setMaterialEmissive(material, 0x000000, 0);
+  } else if (includesAny(name, ["白目"])) {
+    setMaterialColor(material, 0xe8fbff);
+  } else if (includesAny(name, ["黒目", "瞳"])) {
+    setMaterialColor(material, 0x86f3ff);
+    setMaterialEmissive(material, 0x001b24, 0.04);
+  }
 }
 
 function frameLoadedModel(mesh) {
@@ -758,6 +990,9 @@ function setModelMaterials(mesh) {
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;
       }
+      if (modelPreviewOptions.materialPreset === "video") {
+        applyVideoMaterialPreset(material);
+      }
       if (modelPreviewOptions.materialBoost && material.color && material.emissive) {
         material.emissive.copy(material.color).multiplyScalar(
           modelPreviewOptions.materialBoostStrength * 0.15
@@ -788,14 +1023,19 @@ function loadConfiguredModel(state) {
       modelAsset.url,
       (mesh) => {
         modelPreviewOptions = getModelPreviewOptions(state.scene);
+        updateStageLightingSlider();
         realDancer = mesh;
         realDancer.name = "Tsumi Miku local PMX";
         setModelMaterials(realDancer);
         frameLoadedModel(realDancer);
+        const blinkTargets = configureBlink(realDancer);
         scene.add(realDancer);
         dancer.visible = false;
         stage.visible = false;
         modelPreview.visible = true;
+        if (modelGuideLine) {
+          modelGuideLine.visible = false;
+        }
         modelAmbientLight.visible = true;
         modelFillLight.visible = true;
         modelSideLight.visible = true;
@@ -806,8 +1046,10 @@ function loadConfiguredModel(state) {
         window.localModelDebug = {
           name: realDancer.name,
           bones: realDancer.skeleton?.bones?.length || 0,
+          blinkMorphs: blinkTargets.map((target) => target.name),
           position: realDancer.position.toArray(),
           scale: realDancer.scale.toArray(),
+          stageLighting: modelPreviewOptions.stageLighting,
           visible: realDancer.visible
         };
         resolve(realDancer);
@@ -828,6 +1070,7 @@ function render() {
     animateDancer(elapsed);
     animateStage(elapsed);
   } else {
+    updateBlink(delta);
     applyModelPreviewLighting();
   }
   updateCamera(elapsed);
@@ -855,6 +1098,12 @@ cameraModeButton.addEventListener("click", () => {
   drag.yaw = 0;
   drag.pitch = 0;
 });
+
+stageLightingSlider.addEventListener("input", (event) => {
+  setStageLighting(event.currentTarget.value);
+});
+
+updateStageLightingSlider();
 
 canvas.addEventListener("pointerdown", (event) => {
   drag.active = true;
@@ -908,7 +1157,7 @@ loadLocalAssetConfig()
     assetStatus.innerHTML = `
       <span>PMX model</span>
       <strong>${modelPreviewOptions.mode === "clay" ? "Clay" : "Textured"} T-pose</strong>
-      <small>${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${modelPreviewOptions.materialBoostStrength}` : ""} · bloom ${modelPreviewOptions.bloomStrength} · ${mesh.skeleton?.bones?.length || 0} bones</small>
+      <small>${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${modelPreviewOptions.materialBoostStrength}` : ""} · bloom ${modelPreviewOptions.bloomStrength} · ${mesh.skeleton?.bones?.length || 0} bones</small>
     `;
   })
   .catch((error) => {

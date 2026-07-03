@@ -12,9 +12,11 @@
       "modelPreview": {
         "mode": "textured",
         "lighting": "native",
+        "stageLighting": 0,
         "materialBoost": false,
         "materialBoostStrength": 0.35,
-        "bloomStrength": 0.02
+        "bloomStrength": 0.02,
+        "materialPreset": "native"
       },
       "assets": {
         "model": {
