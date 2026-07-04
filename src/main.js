@@ -41,6 +41,8 @@ const MODEL_LIGHTING_CHOICES = ["native", "enhanced"];
 const MODEL_MATERIAL_PRESET_CHOICES = ["native", "video"];
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
+const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
+const PMX_ALPHA_LAYER_POLYGON_OFFSET = -1;
 const PREVIEW_QUERY_KEYS = {
   mode: "modelMode",
   materialPreset: "modelMaterialPreset",
@@ -238,6 +240,7 @@ const clayPreviewMaterial = new THREE.MeshStandardMaterial({
 });
 const originalMeshMaterials = new WeakMap();
 const originalMaterialStates = new WeakMap();
+const alphaLayerTextureCallbackMaterials = new WeakSet();
 
 function addBox(parent, size, position, material, rotation = [0, 0, 0]) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
@@ -1091,6 +1094,9 @@ function updatePreviewControls() {
 }
 
 function updateLocalModelDebug() {
+  const alphaLayerStats = getMmdAlphaLayerStats();
+  document.documentElement.dataset.pmxAlphaLayers = String(alphaLayerStats.active);
+
   if (!window.localModelDebug) {
     return;
   }
@@ -1108,6 +1114,7 @@ function updateLocalModelDebug() {
     materialBoostStrength: modelPreviewOptions.materialBoostStrength,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
+    alphaLayers: alphaLayerStats,
     eyeMorph: selectedEyeMorph?.name || "Default eyes"
   });
 }
@@ -1216,6 +1223,61 @@ function applyVideoMaterialPreset(material) {
   }
 }
 
+function isMmdAlphaLayerMaterial(material) {
+  return Boolean(
+    material?.transparent ||
+      material?.opacity < 1 ||
+      material?.alphaMap ||
+      material?.map?.transparent
+  );
+}
+
+function applyMmdAlphaLayerMaterial(material) {
+  material.transparent = true;
+  material.depthWrite = false;
+  material.depthTest = true;
+  material.alphaTest = Math.max(material.alphaTest || 0, PMX_ALPHA_LAYER_ALPHA_TEST);
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = Math.min(
+    material.polygonOffsetFactor || 0,
+    PMX_ALPHA_LAYER_POLYGON_OFFSET
+  );
+  material.polygonOffsetUnits = Math.min(
+    material.polygonOffsetUnits || 0,
+    PMX_ALPHA_LAYER_POLYGON_OFFSET
+  );
+  material.needsUpdate = true;
+}
+
+function syncMmdAlphaLayerMaterial(material) {
+  if (!isMmdAlphaLayerMaterial(material)) {
+    return false;
+  }
+
+  applyMmdAlphaLayerMaterial(material);
+  return true;
+}
+
+function queueTextureAlphaLayerSync(material) {
+  if (!material?.map || alphaLayerTextureCallbackMaterials.has(material)) {
+    return;
+  }
+
+  alphaLayerTextureCallbackMaterials.add(material);
+  const syncTextureAlpha = () => {
+    if (material.map?.transparent) {
+      applyMmdAlphaLayerMaterial(material);
+      updateLocalModelDebug();
+    }
+  };
+
+  if (Array.isArray(material.map.readyCallbacks)) {
+    material.map.readyCallbacks.push(syncTextureAlpha);
+  } else {
+    syncTextureAlpha();
+  }
+}
+
 function frameLoadedModel(mesh) {
   mesh.updateMatrixWorld(true);
   modelBounds.setFromObject(mesh);
@@ -1260,7 +1322,12 @@ function rememberOriginalMaterialState(material) {
     emissiveIntensity: material.emissiveIntensity,
     opacity: material.opacity,
     transparent: material.transparent,
+    depthTest: material.depthTest,
     depthWrite: material.depthWrite,
+    alphaTest: material.alphaTest,
+    polygonOffset: material.polygonOffset,
+    polygonOffsetFactor: material.polygonOffsetFactor,
+    polygonOffsetUnits: material.polygonOffsetUnits,
     side: material.side
   });
 }
@@ -1282,7 +1349,12 @@ function restoreOriginalMaterialState(material) {
   }
   material.opacity = state.opacity;
   material.transparent = state.transparent;
+  material.depthTest = state.depthTest;
   material.depthWrite = state.depthWrite;
+  material.alphaTest = state.alphaTest;
+  material.polygonOffset = state.polygonOffset;
+  material.polygonOffsetFactor = state.polygonOffsetFactor;
+  material.polygonOffsetUnits = state.polygonOffsetUnits;
   material.side = state.side;
 }
 
@@ -1298,6 +1370,46 @@ function restoreMeshMaterials(object) {
     object.material = originalMeshMaterials.get(object);
   }
   getMaterialList(object.material).forEach(restoreOriginalMaterialState);
+}
+
+function getMmdAlphaLayerStats(mesh = realDancer) {
+  const stats = {
+    active: 0,
+    transparentTextures: 0,
+    transparentMaterials: 0,
+    alphaMaps: 0
+  };
+
+  if (!mesh) {
+    return stats;
+  }
+
+  mesh.traverse((object) => {
+    if (!object.isMesh) {
+      return;
+    }
+
+    getMaterialList(object.material).forEach((material) => {
+      if (!material) {
+        return;
+      }
+
+      if (material.map?.transparent) {
+        stats.transparentTextures += 1;
+      }
+      if (material.transparent || material.opacity < 1) {
+        stats.transparentMaterials += 1;
+      }
+      if (material.alphaMap) {
+        stats.alphaMaps += 1;
+      }
+      if (material.transparent && material.depthWrite === false) {
+        stats.active += 1;
+      }
+    });
+  });
+
+  return stats;
 }
 
 function setModelMaterials(mesh) {
@@ -1318,10 +1430,13 @@ function setModelMaterials(mesh) {
     const meshMaterials = getMaterialList(object.material);
     meshMaterials.forEach((material) => {
       material.side = THREE.DoubleSide;
-      material.transparent = material.transparent || material.opacity < 1;
-      material.depthWrite = material.opacity >= 1;
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;
+      }
+      queueTextureAlphaLayerSync(material);
+      if (!syncMmdAlphaLayerMaterial(material)) {
+        material.transparent = material.transparent || material.opacity < 1;
+        material.depthWrite = material.opacity >= 1;
       }
       if (modelPreviewOptions.materialPreset === "video") {
         applyVideoMaterialPreset(material);
