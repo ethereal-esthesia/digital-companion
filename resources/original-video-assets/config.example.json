@@ -40,6 +40,7 @@
         "lighting": "native",
         "stageLighting": 0,
         "materialBoostStrength": 0,
+        "saturation": 1,
         "bloomStrength": 0.02,
         "cameraZoom": 1
       },

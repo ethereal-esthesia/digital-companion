@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { MMDLoader } from "three-stdlib";
@@ -17,6 +18,7 @@ const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
+const modelSaturationSlider = document.querySelector("#modelSaturation");
 const previewValueOutputs = new Map(
   [...document.querySelectorAll("[data-value-for]")].map((output) => [
     output.dataset.valueFor,
@@ -32,8 +34,36 @@ const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   lighting: "native",
   stageLighting: 0,
   materialBoostStrength: 0,
+  saturation: 1,
   bloomStrength: 0.02,
   cameraZoom: 1
+};
+
+const SATURATION_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    saturation: { value: DEFAULT_MODEL_PREVIEW_OPTIONS.saturation }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float saturation;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      color.rgb = mix(vec3(luma), color.rgb, saturation);
+      gl_FragColor = color;
+    }
+  `
 };
 
 const MODEL_MODE_CHOICES = ["textured", "clay"];
@@ -46,6 +76,7 @@ const PREVIEW_QUERY_KEYS = {
   lighting: "modelLighting",
   stageLighting: "stageLighting",
   materialBoostStrength: "materialBoostStrength",
+  saturation: "modelSaturation",
   bloomStrength: "modelBloom",
   cameraZoom: "cameraZoom",
   modelPreset: "modelPreset"
@@ -99,6 +130,8 @@ camera.position.set(0, 4.2, 13);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+const saturationPass = new ShaderPass(SATURATION_SHADER);
+composer.addPass(saturationPass);
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
   0.98,
@@ -775,6 +808,12 @@ function getModelPreviewOptions(sceneConfig) {
     queryParams.get("materialBoostStrength") ??
       DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength
   );
+  const saturation = parseClampedNumber(
+    queryParams.get("modelSaturation") ?? configured.saturation,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.saturation,
+    0,
+    2
+  );
   const bloomStrength = parseClampedNumber(
     queryParams.get("modelBloom") ?? configured.bloomStrength,
     DEFAULT_MODEL_PREVIEW_OPTIONS.bloomStrength,
@@ -795,6 +834,7 @@ function getModelPreviewOptions(sceneConfig) {
     materialBoostStrength: Number.isFinite(materialBoostStrength)
       ? THREE.MathUtils.clamp(materialBoostStrength, 0, 1)
       : DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength,
+    saturation,
     bloomStrength,
     cameraZoom
   };
@@ -1033,6 +1073,7 @@ function applyModelPreviewLighting() {
   modelHairLight.intensity = enhanced ? 1.8 : 0.45;
   rimLight.intensity = enhanced ? 2.5 : 0.7;
   magentaLight.intensity = enhanced ? 1.2 : 0.25;
+  saturationPass.uniforms.saturation.value = modelPreviewOptions.saturation;
   bloom.enabled = modelPreviewOptions.bloomStrength > 0;
   bloom.strength = modelPreviewOptions.bloomStrength;
 }
@@ -1113,9 +1154,20 @@ function updatePreviewControls() {
     formatPreviewNumber(modelPreviewOptions.materialBoostStrength)
   );
 
+  modelSaturationSlider.value = formatPreviewNumber(modelPreviewOptions.saturation);
+  modelSaturationSlider.setAttribute(
+    "aria-valuetext",
+    `Color saturation ${formatPreviewNumber(modelPreviewOptions.saturation)}`
+  );
+  setPreviewOutput("modelSaturation", formatPreviewNumber(modelPreviewOptions.saturation));
+
   previewControls.dataset.stage = amount > 0 ? "active" : "";
   previewControls.dataset.boost = modelPreviewOptions.materialBoostStrength > 0 ? "active" : "";
+  previewControls.dataset.saturation = modelPreviewOptions.saturation !== 1 ? "active" : "";
   document.documentElement.dataset.stageLighting = amount.toFixed(2);
+  document.documentElement.dataset.modelSaturation = formatPreviewNumber(
+    modelPreviewOptions.saturation
+  );
 
   previewOptionButtons.forEach((button) => {
     const group = button.dataset.optionGroup;
@@ -1144,6 +1196,7 @@ function updateLocalModelDebug() {
     stageLighting: modelPreviewOptions.stageLighting,
     materialBoost: true,
     materialBoostStrength: modelPreviewOptions.materialBoostStrength,
+    saturation: modelPreviewOptions.saturation,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
     modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
@@ -1161,7 +1214,7 @@ function updateModelAssetStatus() {
   assetStatus.innerHTML = `
     <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
@@ -1197,6 +1250,19 @@ function setMaterialBoostStrength(value, syncUrl = true) {
     setPreviewUrlParam("materialBoostStrength", modelPreviewOptions.materialBoostStrength);
   }
   refreshModelPreview({ materials: true });
+}
+
+function setModelSaturation(value, syncUrl = true) {
+  modelPreviewOptions.saturation = parseClampedNumber(
+    value,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.saturation,
+    0,
+    2
+  );
+  if (syncUrl) {
+    setPreviewUrlParam("saturation", modelPreviewOptions.saturation);
+  }
+  refreshModelPreview();
 }
 
 function setCameraZoom(value, syncUrl = true) {
@@ -1705,6 +1771,10 @@ modelBloomSlider.addEventListener("input", (event) => {
 
 materialBoostStrengthSlider.addEventListener("input", (event) => {
   setMaterialBoostStrength(event.currentTarget.value);
+});
+
+modelSaturationSlider.addEventListener("input", (event) => {
+  setModelSaturation(event.currentTarget.value);
 });
 
 previewOptionButtons.forEach((button) => {
