@@ -25,16 +25,59 @@
           <button class="icon-button" id="cameraMode" type="button" aria-label="Change camera mode" title="Camera">
             <span class="camera-icon"></span>
           </button>
-          <label class="eye-select-control" title="Eye morph">
-            <span class="eye-select-icon" aria-hidden="true"></span>
-            <select id="eyeMorphSelect" aria-label="Eye morph">
-              <option value="default">Default eyes</option>
-            </select>
-          </label>
-          <label class="stage-light-control" title="Stage lighting">
-            <span class="stage-light-icon" aria-hidden="true"></span>
-            <input id="stageLighting" type="range" min="0" max="1" step="0.01" aria-label="Stage lighting" />
-          </label>
+          <div class="preview-panel" id="previewControls" aria-label="Model preview parameters">
+            <label class="parameter-select" title="Eye morph">
+              <span class="eye-select-icon" aria-hidden="true"></span>
+              <span class="parameter-label">Eyes</span>
+              <select id="eyeMorphSelect" aria-label="Eye morph">
+                <option value="default">Default eyes</option>
+              </select>
+            </label>
+            <label class="parameter-control" title="Stage lighting">
+              <span class="stage-light-icon" aria-hidden="true"></span>
+              <span class="parameter-label">Stage</span>
+              <input id="stageLighting" type="range" min="0" max="1" step="0.01" aria-label="Stage lighting" />
+              <output class="parameter-value" data-value-for="stageLighting" for="stageLighting">0%</output>
+            </label>
+            <label class="parameter-control" title="Bloom">
+              <span class="bloom-icon" aria-hidden="true"></span>
+              <span class="parameter-label">Bloom</span>
+              <input id="modelBloom" type="range" min="0" max="0.6" step="0.01" aria-label="Bloom" />
+              <output class="parameter-value" data-value-for="modelBloom" for="modelBloom">0.02</output>
+            </label>
+            <label class="parameter-control" title="Material boost">
+              <span class="boost-icon" aria-hidden="true"></span>
+              <span class="parameter-label">Boost</span>
+              <input id="materialBoostStrength" type="range" min="0" max="1" step="0.01" aria-label="Material boost strength" />
+              <output class="parameter-value" data-value-for="materialBoostStrength" for="materialBoostStrength">0.35</output>
+            </label>
+            <label class="parameter-toggle" title="Enable material boost">
+              <span class="parameter-label">Boost on</span>
+              <input id="materialBoost" type="checkbox" aria-label="Enable material boost" />
+              <span class="toggle-track" aria-hidden="true"></span>
+            </label>
+            <div class="parameter-segments" role="group" aria-label="Model mode">
+              <span class="parameter-label">Mode</span>
+              <div class="segment-group">
+                <button type="button" data-option-group="mode" data-option-value="textured">Textured</button>
+                <button type="button" data-option-group="mode" data-option-value="clay">Clay</button>
+              </div>
+            </div>
+            <div class="parameter-segments" role="group" aria-label="Material preset">
+              <span class="parameter-label">Material</span>
+              <div class="segment-group">
+                <button type="button" data-option-group="materialPreset" data-option-value="native">Native</button>
+                <button type="button" data-option-group="materialPreset" data-option-value="video">Video</button>
+              </div>
+            </div>
+            <div class="parameter-segments" role="group" aria-label="Model lighting">
+              <span class="parameter-label">Lighting</span>
+              <div class="segment-group">
+                <button type="button" data-option-group="lighting" data-option-value="native">Native</button>
+                <button type="button" data-option-group="lighting" data-option-value="enhanced">Enhanced</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="meter" aria-hidden="true">

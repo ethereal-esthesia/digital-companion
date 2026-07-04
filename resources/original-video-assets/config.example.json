@@ -16,6 +16,7 @@
         "materialBoost": false,
         "materialBoostStrength": 0.35,
         "bloomStrength": 0.02,
+        "cameraZoom": 1,
         "materialPreset": "native"
       },
       "assets": {
