@@ -17,7 +17,6 @@ const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
-const materialBoostToggle = document.querySelector("#materialBoost");
 const previewValueOutputs = new Map(
   [...document.querySelectorAll("[data-value-for]")].map((output) => [
     output.dataset.valueFor,
@@ -30,32 +29,28 @@ const queryParams = new URLSearchParams(window.location.search);
 
 const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   mode: "textured",
-  materialPreset: "native",
   lighting: "native",
   stageLighting: 0,
-  materialBoost: false,
-  materialBoostStrength: 0.35,
+  materialBoostStrength: 0,
   bloomStrength: 0.02,
   cameraZoom: 1
 };
 
 const MODEL_MODE_CHOICES = ["textured", "clay"];
 const MODEL_LIGHTING_CHOICES = ["native", "enhanced"];
-const MODEL_MATERIAL_PRESET_CHOICES = ["native", "video"];
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
 const PREVIEW_QUERY_KEYS = {
   mode: "modelMode",
-  materialPreset: "modelMaterialPreset",
   lighting: "modelLighting",
   stageLighting: "stageLighting",
-  materialBoost: "materialBoost",
   materialBoostStrength: "materialBoostStrength",
   bloomStrength: "modelBloom",
   cameraZoom: "cameraZoom",
   modelPreset: "modelPreset"
 };
+const DEPRECATED_PREVIEW_QUERY_KEYS = ["modelMaterialPreset", "materialBoost"];
 
 const BLINK_MORPH_NAMES = ["まばたき", "blink", "Blink", "BLINK"];
 const BLINK_CLOSE_RATIO = 0.32;
@@ -725,16 +720,6 @@ function updateCamera(t) {
   }
 }
 
-function parseBoolean(value, fallback = false) {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
-}
-
 function parseUnitInterval(value, fallback = 0) {
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -782,22 +767,12 @@ function getModelPreviewOptions(sceneConfig) {
     MODEL_LIGHTING_CHOICES,
     DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
   );
-  const materialPreset = pickChoice(
-    queryParams.get("modelMaterialPreset") || configured.materialPreset,
-    MODEL_MATERIAL_PRESET_CHOICES,
-    DEFAULT_MODEL_PREVIEW_OPTIONS.materialPreset
-  );
-  const materialBoost = parseBoolean(
-    queryParams.get("materialBoost") ?? configured.materialBoost,
-    DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoost
-  );
   const stageLighting = parseUnitInterval(
     queryParams.get("stageLighting") ?? configured.stageLighting,
     DEFAULT_MODEL_PREVIEW_OPTIONS.stageLighting
   );
   const materialBoostStrength = Number(
     queryParams.get("materialBoostStrength") ??
-      configured.materialBoostStrength ??
       DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength
   );
   const bloomStrength = parseClampedNumber(
@@ -815,10 +790,8 @@ function getModelPreviewOptions(sceneConfig) {
 
   return {
     mode,
-    materialPreset,
     lighting,
     stageLighting,
-    materialBoost,
     materialBoostStrength: Number.isFinite(materialBoostStrength)
       ? THREE.MathUtils.clamp(materialBoostStrength, 0, 1)
       : DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength,
@@ -877,10 +850,11 @@ function collectEyeMorphOptions(mesh) {
 function populateModelPresetSelect(state) {
   const presets = state.modelPresets || [];
   const selected = state.selectedModelPreset || presets[0];
+  const visiblePresets = presets.filter((preset) => preset.ok);
 
   modelPresetSelect.innerHTML = "";
 
-  if (presets.length === 0) {
+  if (visiblePresets.length === 0) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "Configured model";
@@ -889,20 +863,24 @@ function populateModelPresetSelect(state) {
     return;
   }
 
-  presets.forEach((preset) => {
+  visiblePresets.forEach((preset) => {
     const option = document.createElement("option");
     option.value = preset.id;
-    option.textContent = `${preset.label}${preset.ok ? "" : " (missing)"}`;
-    option.disabled = !preset.ok;
+    option.textContent = preset.label;
     option.selected = preset.id === selected?.id;
     modelPresetSelect.append(option);
   });
 
-  modelPresetSelect.disabled = presets.length <= 1;
+  modelPresetSelect.disabled = visiblePresets.length <= 1;
   modelPresetSelect.title = selected
     ? `${selected.label}: ${selected.path || "No path configured"}`
     : "No model presets configured";
   document.documentElement.dataset.modelPreset = selected?.id || "";
+
+  const requestedModelPreset = queryParams.get(PREVIEW_QUERY_KEYS.modelPreset);
+  if (requestedModelPreset && selected?.id && requestedModelPreset !== selected.id) {
+    setPreviewUrlParam("modelPreset", selected.id);
+  }
 }
 
 function setEyeMorphWeight(option, weight) {
@@ -1077,12 +1055,31 @@ function setPreviewUrlParam(option, value) {
     return;
   }
 
-  const normalizedValue = option === "materialBoost"
-    ? (value ? "1" : "0")
-    : typeof value === "number"
+  const normalizedValue = typeof value === "number"
       ? formatPreviewNumber(value)
       : String(value);
   queryParams.set(key, normalizedValue);
+  const search = queryParams.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
+  );
+}
+
+function pruneDeprecatedPreviewUrlParams() {
+  let changed = false;
+  DEPRECATED_PREVIEW_QUERY_KEYS.forEach((key) => {
+    if (queryParams.has(key)) {
+      queryParams.delete(key);
+      changed = true;
+    }
+  });
+
+  if (!changed) {
+    return;
+  }
+
   const search = queryParams.toString();
   window.history.replaceState(
     null,
@@ -1106,7 +1103,6 @@ function updatePreviewControls() {
   );
   setPreviewOutput("modelBloom", formatPreviewNumber(modelPreviewOptions.bloomStrength));
 
-  materialBoostToggle.checked = modelPreviewOptions.materialBoost;
   materialBoostStrengthSlider.value = formatPreviewNumber(modelPreviewOptions.materialBoostStrength);
   materialBoostStrengthSlider.setAttribute(
     "aria-valuetext",
@@ -1118,7 +1114,7 @@ function updatePreviewControls() {
   );
 
   previewControls.dataset.stage = amount > 0 ? "active" : "";
-  previewControls.dataset.boost = modelPreviewOptions.materialBoost ? "active" : "";
+  previewControls.dataset.boost = modelPreviewOptions.materialBoostStrength > 0 ? "active" : "";
   document.documentElement.dataset.stageLighting = amount.toFixed(2);
 
   previewOptionButtons.forEach((button) => {
@@ -1144,10 +1140,9 @@ function updateLocalModelDebug() {
 
   Object.assign(window.localModelDebug, {
     mode: modelPreviewOptions.mode,
-    materialPreset: modelPreviewOptions.materialPreset,
     lighting: modelPreviewOptions.lighting,
     stageLighting: modelPreviewOptions.stageLighting,
-    materialBoost: modelPreviewOptions.materialBoost,
+    materialBoost: true,
     materialBoostStrength: modelPreviewOptions.materialBoostStrength,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
@@ -1166,7 +1161,7 @@ function updateModelAssetStatus() {
   assetStatus.innerHTML = `
     <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)}` : ""} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
@@ -1194,14 +1189,6 @@ function setBloomStrength(value, syncUrl = true) {
     setPreviewUrlParam("bloomStrength", modelPreviewOptions.bloomStrength);
   }
   refreshModelPreview();
-}
-
-function setMaterialBoost(enabled, syncUrl = true) {
-  modelPreviewOptions.materialBoost = Boolean(enabled);
-  if (syncUrl) {
-    setPreviewUrlParam("materialBoost", modelPreviewOptions.materialBoost ? 1 : 0);
-  }
-  refreshModelPreview({ materials: true });
 }
 
 function setMaterialBoostStrength(value, syncUrl = true) {
@@ -1245,7 +1232,6 @@ function handleCameraWheelZoom(event) {
 function setPreviewChoice(option, value, syncUrl = true) {
   const choices = {
     mode: MODEL_MODE_CHOICES,
-    materialPreset: MODEL_MATERIAL_PRESET_CHOICES,
     lighting: MODEL_LIGHTING_CHOICES
   }[option];
 
@@ -1257,17 +1243,7 @@ function setPreviewChoice(option, value, syncUrl = true) {
   if (syncUrl) {
     setPreviewUrlParam(option, value);
   }
-  refreshModelPreview({ materials: option === "mode" || option === "materialPreset" });
-}
-
-function applyVideoMaterialPreset(material) {
-  if (material.color) {
-    material.color.set(0xffffff);
-  }
-  if (material.emissive) {
-    material.emissive.set(0x000000);
-    material.emissiveIntensity = 0;
-  }
+  refreshModelPreview({ materials: option === "mode" });
 }
 
 function isMmdTransparentLayerMaterial(material) {
@@ -1546,10 +1522,7 @@ function setModelMaterials(mesh, kind = activeModelKind) {
         material.transparent = material.opacity < 1;
         material.depthWrite = material.opacity >= 1;
       }
-      if (modelPreviewOptions.materialPreset === "video") {
-        applyVideoMaterialPreset(material);
-      }
-      if (modelPreviewOptions.materialBoost && material.color && material.emissive) {
+      if (material.color && material.emissive) {
         material.emissive.copy(material.color).multiplyScalar(
           modelPreviewOptions.materialBoostStrength * 0.15
         );
@@ -1718,10 +1691,6 @@ modelBloomSlider.addEventListener("input", (event) => {
   setBloomStrength(event.currentTarget.value);
 });
 
-materialBoostToggle.addEventListener("change", (event) => {
-  setMaterialBoost(event.currentTarget.checked);
-});
-
 materialBoostStrengthSlider.addEventListener("input", (event) => {
   setMaterialBoostStrength(event.currentTarget.value);
 });
@@ -1732,6 +1701,7 @@ previewOptionButtons.forEach((button) => {
   });
 });
 
+pruneDeprecatedPreviewUrlParams();
 updatePreviewControls();
 
 canvas.addEventListener("pointerdown", (event) => {

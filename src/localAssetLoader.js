@@ -130,6 +130,25 @@ function pickModelPreset(scene, modelPresets) {
   );
 }
 
+function pickReadyModelPreset(scene, modelPresets, fallbackId) {
+  const query = new URLSearchParams(window.location.search);
+  const requestedId = query.get(MODEL_PRESET_QUERY_KEY) || scene?.activeModelPreset || fallbackId;
+  const requested = modelPresets.find((preset) => preset.id === requestedId);
+
+  if (requested?.ok) {
+    return requested;
+  }
+
+  return (
+    modelPresets.find((preset) => preset.ok && preset.required) ||
+    modelPresets.find((preset) => preset.ok) ||
+    requested ||
+    modelPresets.find((preset) => preset.required) ||
+    modelPresets[0] ||
+    null
+  );
+}
+
 function normalizeAssets(config, scene, selectedModelPreset) {
   const root = config.assetRoot || "/local-resources/original-video-assets/";
   const assets = scene?.assets || {};
@@ -177,18 +196,23 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
   const scene = pickScene(config);
   const root = config.assetRoot || "/local-resources/original-video-assets/";
   const modelPresets = normalizeModelPresets(scene, root);
-  const selectedModelPreset = pickModelPreset(scene, modelPresets);
+  const requestedModelPreset = pickModelPreset(scene, modelPresets);
+  const modelPresetResults = await Promise.all(
+    modelPresets.map(async (preset) => {
+      const probe = await probeAsset(preset.url);
+      return { ...preset, ...probe };
+    })
+  );
+  const selectedModelPreset = pickReadyModelPreset(
+    scene,
+    modelPresetResults,
+    requestedModelPreset?.id
+  );
   const assets = normalizeAssets(config, scene, selectedModelPreset);
   const results = await Promise.all(
     assets.map(async (asset) => {
       const probe = await probeAsset(asset.url);
       return { ...asset, ...probe };
-    })
-  );
-  const modelPresetResults = await Promise.all(
-    modelPresets.map(async (preset) => {
-      const probe = await probeAsset(preset.url);
-      return { ...preset, ...probe };
     })
   );
 
@@ -199,8 +223,7 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
     scene,
     assets: results,
     modelPresets: modelPresetResults,
-    selectedModelPreset:
-      modelPresetResults.find((preset) => preset.id === selectedModelPreset?.id) || null,
+    selectedModelPreset,
     summary: summarize(results)
   };
 }

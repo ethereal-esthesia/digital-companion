@@ -39,11 +39,9 @@
         "mode": "textured",
         "lighting": "native",
         "stageLighting": 0,
-        "materialBoost": false,
-        "materialBoostStrength": 0.35,
+        "materialBoostStrength": 0,
         "bloomStrength": 0.02,
-        "cameraZoom": 1,
-        "materialPreset": "native"
+        "cameraZoom": 1
       },
       "assets": {
         "model": {
