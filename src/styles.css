@@ -5,6 +5,7 @@
   --pink: #ff4fc8;
   --ink: #ffffff;
   --panel: rgb(5 9 16 / 12%);
+  --panel-stable: rgb(5 9 16 / 18%);
   --panel-clear: rgb(5 9 16 / 6%);
   --line: rgb(146 249 255 / 44%);
 }
@@ -52,7 +53,9 @@ body,
   align-items: end;
   justify-content: space-between;
   gap: 16px;
+  isolation: isolate;
   pointer-events: none;
+  transform: translateZ(0);
 }
 
 .track {
@@ -64,12 +67,14 @@ body,
   padding: 11px 14px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--panel-stable);
   box-shadow:
     0 0 22px rgb(73 244 255 / 14%),
     inset 0 0 14px rgb(73 244 255 / 7%);
+  backface-visibility: hidden;
   color: white;
-  backdrop-filter: blur(12px);
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
 .track span,
@@ -147,12 +152,14 @@ body,
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--panel-stable);
   color: white;
   box-shadow:
     0 0 20px rgb(73 244 255 / 14%),
     inset 0 0 12px rgb(255 79 200 / 6%);
-  backdrop-filter: blur(12px);
+  backface-visibility: hidden;
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
 .preview-panel {
@@ -162,12 +169,14 @@ body,
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--panel-stable);
   color: white;
   box-shadow:
     0 0 20px rgb(73 244 255 / 14%),
     inset 0 0 12px rgb(255 79 200 / 6%);
-  backdrop-filter: blur(12px);
+  backface-visibility: hidden;
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
 .preview-panel[data-stage="active"] {
