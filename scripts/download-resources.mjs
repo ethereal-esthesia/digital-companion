@@ -65,6 +65,18 @@ const manualSources = [
     destination: "model/"
   },
   {
+    label: "Model preset: Sameko Saba",
+    url: manifest.assets.modelPresets[0].sourceUrl,
+    reason: "paid/manual shop or member source and bundled terms review required",
+    destination: "model/sameko-saba/"
+  },
+  {
+    label: "Sameko Saba BOOTH 3D Set",
+    url: manifest.assets.modelPresets[0].downloadSources[1].url,
+    reason: "paid download; purchase and terms must stay manual",
+    destination: "model/sameko-saba/"
+  },
+  {
     label: "Motion/camera/facial archive",
     url: "https://bowlroll.net/file/261196",
     reason: "password flow and restricted terms",
@@ -102,6 +114,16 @@ const descriptionSources = [
     url: manifest.source.url,
     sourceFile: "sources/bilibili-BV1MsZtYCE4t.json",
     kind: "bilibili-json"
+  },
+  {
+    label: "Sameko Saba YouTube reference video",
+    url: manifest.assets.modelPresets[0].sourceVideo,
+    kind: "html-meta"
+  },
+  {
+    label: "Sameko Saba model listing",
+    url: manifest.assets.modelPresets[0].sourceUrl,
+    kind: "html-meta"
   },
   {
     label: "Model Nico description",
@@ -147,6 +169,7 @@ const descriptionSources = [
 const trackedLicenseNotes = [
   "resources/original-video-assets/LICENSE_AUDIT.md",
   "resources/original-video-assets/model/LICENSE_NOTES.md",
+  "resources/original-video-assets/model/SAMEKO_SABA_LICENSE_NOTES.md",
   "resources/original-video-assets/motion/LICENSE_NOTES.md",
   "resources/original-video-assets/camera/LICENSE_NOTES.md",
   "resources/original-video-assets/facial/LICENSE_NOTES.md",
@@ -249,9 +272,28 @@ async function extractNicoDescription(url) {
   return metaDescription ? htmlToText(metaDescription[1]) : "";
 }
 
+async function extractHtmlMetaDescription(url) {
+  const response = await fetchWithHeaders(url);
+  const html = await response.text();
+  const title =
+    html.match(/<meta property="og:title" content="([^"]*)"/)?.[1] ||
+    html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ||
+    "";
+  const description =
+    html.match(/<meta property="og:description" content="([^"]*)"/)?.[1] ||
+    html.match(/<meta name="description" content="([^"]*)"/)?.[1] ||
+    "";
+
+  return [title, description].map(htmlToText).filter(Boolean).join("\n\n");
+}
+
 async function getDescription(source) {
   if (source.kind === "nico-watch") {
     return extractNicoDescription(source.url);
+  }
+
+  if (source.kind === "html-meta") {
+    return extractHtmlMetaDescription(source.url);
   }
 
   const json = await readJsonFromLocal(source.sourceFile);

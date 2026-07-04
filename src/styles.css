@@ -451,11 +451,43 @@ body,
   transform: translate(2px, -8px);
 }
 
+.model-select-icon,
 .eye-select-icon {
   position: relative;
   flex: 0 0 auto;
   width: 24px;
   height: 22px;
+}
+
+.model-select-icon {
+  border: 2px solid currentColor;
+  border-radius: 999px 999px 6px 6px;
+  color: rgb(151 251 255 / 86%);
+  transform: scale(0.8);
+}
+
+.model-select-icon::before {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 8px 0 0 currentColor;
+  content: "";
+}
+
+.model-select-icon::after {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -7px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
+  content: "";
 }
 
 .eye-select-icon::before {

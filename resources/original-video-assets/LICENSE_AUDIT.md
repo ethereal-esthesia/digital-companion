@@ -1,6 +1,6 @@
 # License Audit
 
-Checked: 2026-06-28
+Checked: 2026-07-04
 
 This is a working rights/usage audit for the assets credited by the source video. It is not legal advice. Keep each downloaded asset's original README, license, and distribution page notes with the asset.
 
@@ -11,6 +11,7 @@ This is a working rights/usage audit for the assets credited by the source video
 | Source Bilibili video | Reference only | Do not reupload or redistribute the source video. Bilibili metadata marks `no_reprint: 1`. |
 | Stage: `新场景 - HZ-D` | Unknown | Source video names the stage but gives no distribution link. Find original source and terms before import. |
 | Model: `つみ式ミクさんv2.1` | Needs bundled README/license | BowlRoll page confirms file `つみ式ミクさんv2.1.zip`, but download requires login and public page does not show terms. Inspect bundled readme before using. |
+| Model preset: `Sameko Saba 3D Model` | Paid/manual, needs terms review | Public listing points to BOOTH/Patreon downloads for PMX/VRM/Blend/VRChat formats. Purchase/access manually, inspect bundled terms, and do not redistribute. |
 | Motion/camera/facial: `GETCHA! - apr(社会の窓P)` | Restricted | Noncommercial MMD/MMD-derived-tool use appears allowed with credits. Direct Three.js/web use needs permission or clarification. |
 | Music: `GETCHA!` by Giga/KIRA | No reuse license found | Do not bundle the recording or instrumental unless a clear license/permission is obtained. Link/reference only for now. |
 | Choreography: 足太ぺんた `GETCHA!` dance | Credit dependency | apr terms require crediting the choreography/trace source when using the motion. |
@@ -45,6 +46,19 @@ Sources:
 - https://www.nicovideo.jp/watch/sm29503530
 - https://bowlroll.net/file/112578
 - https://piapro.net/license
+
+### Model preset: Sameko Saba
+
+The requested reference video is `【MMD】Sameko Saba (GIMMExGIMME [Cover])`. The likely model source is the xxSnowCherryxx/SnowCherry listing for `Sameko Saba 3D Model`, which advertises MMD `.pmx`, VRM, Blender, FBX, and VRChat formats and points to BOOTH/Patreon sources. The BOOTH item is a paid downloadable product. Treat this as manual-only and do not automate purchase/download.
+
+This is a fanart/source-character model, so both the 3D model creator's terms and any underlying character/rightsholder terms may matter. Keep the original purchase/download terms and bundled readme beside the local model.
+
+Sources:
+
+- https://www.youtube.com/watch?v=ZqR6xMDtOJU
+- https://www.deviantart.com/xxsnowcherryxx/art/MMD-VRChat-Sameko-Saba-3D-Model-Download-1231830604
+- https://xsnowcherry.booth.pm/items/7323959
+- https://www.patreon.com/posts/vtuber-sameko-3-136835269
 
 ### Music
 

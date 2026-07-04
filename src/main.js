@@ -10,6 +10,7 @@ const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
 const previewControls = document.querySelector("#previewControls");
+const modelPresetSelect = document.querySelector("#modelPresetSelect");
 const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
@@ -50,7 +51,8 @@ const PREVIEW_QUERY_KEYS = {
   materialBoost: "materialBoost",
   materialBoostStrength: "materialBoostStrength",
   bloomStrength: "modelBloom",
-  cameraZoom: "cameraZoom"
+  cameraZoom: "cameraZoom",
+  modelPreset: "modelPreset"
 };
 
 const BLINK_MORPH_NAMES = ["まばたき", "blink", "Blink", "BLINK"];
@@ -868,6 +870,37 @@ function collectEyeMorphOptions(mesh) {
   return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
 
+function populateModelPresetSelect(state) {
+  const presets = state.modelPresets || [];
+  const selected = state.selectedModelPreset || presets[0];
+
+  modelPresetSelect.innerHTML = "";
+
+  if (presets.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Configured model";
+    modelPresetSelect.append(option);
+    modelPresetSelect.disabled = true;
+    return;
+  }
+
+  presets.forEach((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = `${preset.label}${preset.ok ? "" : " (missing)"}`;
+    option.disabled = !preset.ok;
+    option.selected = preset.id === selected?.id;
+    modelPresetSelect.append(option);
+  });
+
+  modelPresetSelect.disabled = presets.length <= 1;
+  modelPresetSelect.title = selected
+    ? `${selected.label}: ${selected.path || "No path configured"}`
+    : "No model presets configured";
+  document.documentElement.dataset.modelPreset = selected?.id || "";
+}
+
 function setEyeMorphWeight(option, weight) {
   option.targets.forEach((target) => {
     target.object.morphTargetInfluences[target.index] = weight;
@@ -1114,6 +1147,7 @@ function updateLocalModelDebug() {
     materialBoostStrength: modelPreviewOptions.materialBoostStrength,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
+    modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
     alphaLayers: alphaLayerStats,
     eyeMorph: selectedEyeMorph?.name || "Default eyes"
   });
@@ -1127,8 +1161,8 @@ function updateModelAssetStatus() {
   assetStatus.dataset.state = "ready";
   assetStatus.innerHTML = `
     <span>PMX model</span>
-    <strong>${modelPreviewOptions.mode === "clay" ? "Clay" : "Textured"} T-pose</strong>
-    <small>${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)}` : ""} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${realDancer.skeleton?.bones?.length || 0} bones</small>
+    <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)}` : ""} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${realDancer.skeleton?.bones?.length || 0} bones</small>
   `;
 }
 
@@ -1187,6 +1221,15 @@ function setCameraZoom(value, syncUrl = true) {
   updatePreviewControls();
   updateLocalModelDebug();
   updateModelAssetStatus();
+}
+
+function setModelPreset(id) {
+  if (!id || id === localAssetState?.selectedModelPreset?.id) {
+    return;
+  }
+
+  setPreviewUrlParam("modelPreset", id);
+  window.location.assign(`${window.location.pathname}?${queryParams.toString()}${window.location.hash}`);
 }
 
 function handleCameraWheelZoom(event) {
@@ -1479,7 +1522,7 @@ function setModelMaterials(mesh) {
 }
 
 function loadConfiguredModel(state) {
-  const modelAsset = state.assets.find((asset) => asset.name === "model");
+  const modelAsset = state.selectedModelPreset || state.assets.find((asset) => asset.name === "model");
   if (!modelAsset?.ok || !modelAsset.url) {
     return Promise.resolve(null);
   }
@@ -1488,7 +1531,7 @@ function loadConfiguredModel(state) {
   assetStatus.innerHTML = `
     <span>Local model</span>
     <strong>Loading</strong>
-    <small>${modelAsset.path}</small>
+    <small>${modelAsset.label || modelAsset.path}</small>
   `;
 
   const loader = new MMDLoader();
@@ -1500,7 +1543,7 @@ function loadConfiguredModel(state) {
         updatePreviewControls();
         realDancer = mesh;
         window.localModel = realDancer;
-        realDancer.name = "Tsumi Miku local PMX";
+        realDancer.name = modelAsset.label || "Local PMX model";
         setModelMaterials(realDancer);
         frameLoadedModel(realDancer);
         const blinkTargets = configureBlink(realDancer);
@@ -1521,6 +1564,8 @@ function loadConfiguredModel(state) {
         activeDancer = realDancer;
         window.localModelDebug = {
           name: realDancer.name,
+          modelPath: modelAsset.path,
+          modelPreset: modelAsset.id || "default",
           bones: realDancer.skeleton?.bones?.length || 0,
           blinkMorphs: blinkTargets.map((target) => target.name),
           eyeMorphs: eyeMorphController.options.map((option) => option.name),
@@ -1576,6 +1621,10 @@ cameraModeButton.addEventListener("click", () => {
   cameraMode = (cameraMode + 1) % 3;
   drag.yaw = 0;
   drag.pitch = 0;
+});
+
+modelPresetSelect.addEventListener("change", (event) => {
+  setModelPreset(event.currentTarget.value);
 });
 
 eyeMorphSelect.addEventListener("change", (event) => {
@@ -1658,6 +1707,7 @@ loadLocalAssetConfig()
   .then((state) => {
     localAssetState = state;
     window.localAssetState = state;
+    populateModelPresetSelect(state);
     renderAssetStatus(state, assetStatus);
     return loadConfiguredModel(state);
   })

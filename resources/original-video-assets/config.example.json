@@ -9,6 +9,24 @@
       "title": "GETCHA local assets",
       "artist": "Giga & KIRA",
       "notes": "Copy this file to local-resources/original-video-assets/config.json and point each entry at user-supplied local assets.",
+      "activeModelPreset": "tsumi-miku",
+      "modelPresets": [
+        {
+          "id": "tsumi-miku",
+          "label": "Tsumi Miku v2.1",
+          "path": "model/put-model-here.pmx",
+          "kind": "pmx",
+          "required": true
+        },
+        {
+          "id": "sameko-saba",
+          "label": "Sameko Saba",
+          "path": "model/sameko-saba/put-model-here.pmx",
+          "kind": "pmx",
+          "required": false,
+          "sourceId": "sameko-saba-snowcherry"
+        }
+      ],
       "modelPreview": {
         "mode": "textured",
         "lighting": "native",

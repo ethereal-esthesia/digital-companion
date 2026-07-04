@@ -2,6 +2,7 @@ const DEFAULT_CONFIG_URL = "/local-resources/original-video-assets/config.json";
 const FALLBACK_CONFIG_URL = "/resources/original-video-assets/config.example.json";
 
 const ASSET_ORDER = ["model", "stage", "motion", "camera", "facial", "audio"];
+const MODEL_PRESET_QUERY_KEY = "modelPreset";
 
 function trimSlashes(value) {
   return value.replace(/^\/+|\/+$/g, "");
@@ -15,6 +16,14 @@ function joinUrl(root, path) {
     return path;
   }
   return `${root.replace(/\/?$/, "/")}${trimSlashes(path)}`;
+}
+
+function expectsBinaryAsset(url) {
+  return /\.(pmx|pmd|vmd|vpd|mp3|wav|ogg|flac|zip|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);
+}
+
+function isHtmlFallback(url, response) {
+  return expectsBinaryAsset(url) && response.headers.get("content-type")?.includes("text/html");
 }
 
 async function fetchJson(url) {
@@ -34,7 +43,7 @@ async function probeAsset(url) {
     const head = await fetch(url, { method: "HEAD", cache: "no-store" });
     if (head.ok) {
       return {
-        ok: true,
+        ok: !isHtmlFallback(url, head),
         status: head.status,
         bytes: Number(head.headers.get("content-length") || 0)
       };
@@ -49,7 +58,7 @@ async function probeAsset(url) {
       headers: { Range: "bytes=0-0" }
     });
     return {
-      ok: get.ok || get.status === 206,
+      ok: (get.ok || get.status === 206) && !isHtmlFallback(url, get),
       status: get.status,
       bytes: Number(get.headers.get("content-length") || 0)
     };
@@ -68,20 +77,73 @@ function pickScene(config) {
   return scenes.find((scene) => scene.id === config.activeScene) || scenes[0] || null;
 }
 
-function normalizeAssets(config, scene) {
+function normalizeAssetEntry(name, entry, root) {
+  const normalized = typeof entry === "string" ? { path: entry } : entry || {};
+
+  return {
+    name,
+    kind: normalized.kind || name,
+    path: normalized.path || "",
+    url: joinUrl(root, normalized.path || ""),
+    required: Boolean(normalized.required),
+    label: normalized.label || normalized.name || name
+  };
+}
+
+function normalizeModelPresets(scene, root) {
+  const assets = scene?.assets || {};
+  const configuredPresets = Array.isArray(scene?.modelPresets) ? scene.modelPresets : [];
+
+  if (configuredPresets.length > 0) {
+    return configuredPresets.map((preset, index) => {
+      const normalized = normalizeAssetEntry("model", preset, root);
+      return {
+        ...normalized,
+        id: preset.id || `model-${index + 1}`,
+        label: preset.label || preset.name || normalized.label || `Model ${index + 1}`,
+        sourceId: preset.sourceId || null,
+        required: preset.required !== undefined ? Boolean(preset.required) : index === 0
+      };
+    });
+  }
+
+  const fallbackModel = normalizeAssetEntry("model", assets.model, root);
+  return [
+    {
+      ...fallbackModel,
+      id: "default",
+      label: fallbackModel.label || "Configured model",
+      sourceId: null,
+      required: fallbackModel.required
+    }
+  ];
+}
+
+function pickModelPreset(scene, modelPresets) {
+  const query = new URLSearchParams(window.location.search);
+  const requestedId = query.get(MODEL_PRESET_QUERY_KEY) || scene?.activeModelPreset;
+  return (
+    modelPresets.find((preset) => preset.id === requestedId) ||
+    modelPresets.find((preset) => preset.required) ||
+    modelPresets[0] ||
+    null
+  );
+}
+
+function normalizeAssets(config, scene, selectedModelPreset) {
   const root = config.assetRoot || "/local-resources/original-video-assets/";
   const assets = scene?.assets || {};
 
   return ASSET_ORDER.map((name) => {
-    const entry = assets[name];
-    const normalized = typeof entry === "string" ? { path: entry } : entry || {};
-    return {
-      name,
-      kind: normalized.kind || name,
-      path: normalized.path || "",
-      url: joinUrl(root, normalized.path || ""),
-      required: Boolean(normalized.required)
-    };
+    if (name === "model" && selectedModelPreset) {
+      return {
+        ...selectedModelPreset,
+        name: "model",
+        required: true
+      };
+    }
+
+    return normalizeAssetEntry(name, assets[name], root);
   });
 }
 
@@ -113,11 +175,20 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
   }
 
   const scene = pickScene(config);
-  const assets = normalizeAssets(config, scene);
+  const root = config.assetRoot || "/local-resources/original-video-assets/";
+  const modelPresets = normalizeModelPresets(scene, root);
+  const selectedModelPreset = pickModelPreset(scene, modelPresets);
+  const assets = normalizeAssets(config, scene, selectedModelPreset);
   const results = await Promise.all(
     assets.map(async (asset) => {
       const probe = await probeAsset(asset.url);
       return { ...asset, ...probe };
+    })
+  );
+  const modelPresetResults = await Promise.all(
+    modelPresets.map(async (preset) => {
+      const probe = await probeAsset(preset.url);
+      return { ...preset, ...probe };
     })
   );
 
@@ -127,6 +198,9 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
     usingExample,
     scene,
     assets: results,
+    modelPresets: modelPresetResults,
+    selectedModelPreset:
+      modelPresetResults.find((preset) => preset.id === selectedModelPreset?.id) || null,
     summary: summarize(results)
   };
 }

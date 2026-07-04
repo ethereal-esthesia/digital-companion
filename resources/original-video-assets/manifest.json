@@ -63,6 +63,48 @@
         }
       ]
     },
+    "modelPresets": [
+      {
+        "id": "sameko-saba-snowcherry",
+        "name": "Sameko Saba 3D Model",
+        "character": "Sameko Saba",
+        "creator": "xxSnowCherryxx / SnowCherry",
+        "sourceVideo": "https://www.youtube.com/watch?v=ZqR6xMDtOJU",
+        "sourceVideoTitle": "【MMD】Sameko Saba (GIMMExGIMME [Cover])",
+        "sourceUrl": "https://www.deviantart.com/xxsnowcherryxx/art/MMD-VRChat-Sameko-Saba-3D-Model-Download-1231830604",
+        "localPath": "model/sameko-saba/",
+        "ignoredLocalPath": "local-resources/original-video-assets/model/sameko-saba/",
+        "licenseStatus": "paid-manual-download-needs-terms-review",
+        "licenseNotes": "model/SAMEKO_SABA_LICENSE_NOTES.md",
+        "downloadSources": [
+          {
+            "label": "DeviantArt model listing",
+            "url": "https://www.deviantart.com/xxsnowcherryxx/art/MMD-VRChat-Sameko-Saba-3D-Model-Download-1231830604",
+            "mode": "manual",
+            "reason": "Listing points to creator shop/member sources; review terms before importing."
+          },
+          {
+            "label": "BOOTH 3D Set",
+            "url": "https://xsnowcherry.booth.pm/items/7323959",
+            "mode": "manual-paid",
+            "reason": "Paid download; do not automate purchase or redistribute downloaded files."
+          },
+          {
+            "label": "Patreon model post",
+            "url": "https://www.patreon.com/posts/vtuber-sameko-3-136835269",
+            "mode": "manual-paid",
+            "reason": "Patreon/member-gated source; review creator terms and bundled license."
+          }
+        ],
+        "referenceSources": [
+          {
+            "label": "Sketchfab Sameko Saba fanart model",
+            "url": "https://sketchfab.com/3d-models/sameko-saba-3d-model-622a124834cc4f24be1c24ab9bccf68a",
+            "reason": "Reference-only unless its download/license terms are separately reviewed."
+          }
+        ]
+      }
+    ],
     "motion": {
       "name": "GETCHA!",
       "creator": "apr(社会の窓P)",

@@ -19,6 +19,11 @@ Use [config.example.json](config.example.json) as the tracked template. The loca
     {
       "id": "getcha-local",
       "title": "GETCHA local assets",
+      "activeModelPreset": "miku",
+      "modelPresets": [
+        { "id": "miku", "label": "Miku", "path": "model/miku/model.pmx", "kind": "pmx", "required": true },
+        { "id": "sameko-saba", "label": "Sameko Saba", "path": "model/sameko-saba/model.pmx", "kind": "pmx", "required": false }
+      ],
       "assets": {
         "model": { "path": "model/miku/model.pmx", "kind": "pmx", "required": true },
         "motion": { "path": "motion/getcha.vmd", "kind": "vmd", "required": true },
@@ -28,5 +33,7 @@ Use [config.example.json](config.example.json) as the tracked template. The loca
   ]
 }
 ```
+
+`assets.model` remains supported for old configs. When `modelPresets` is present, the selected preset is loaded instead; change it with `?modelPreset=some-id` or the in-app model dropdown.
 
 For WebKit packaging, the wrapper should grant read access to this folder or rewrite `assetRoot` to a wrapper-provided local URL.

@@ -40,6 +40,7 @@ Read it before opening gated source downloads. It gathers original source descri
 | Item | Source | Why manual |
 | --- | --- | --- |
 | Model: `つみ式ミクさんv2.1` | https://bowlroll.net/file/112578 | Requires BowlRoll login and bundled README review. |
+| Model preset: `Sameko Saba 3D Model` | https://www.deviantart.com/xxsnowcherryxx/art/MMD-VRChat-Sameko-Saba-3D-Model-Download-1231830604 | Creator listing points to paid/manual BOOTH and Patreon sources; bundled terms need review. |
 | Motion/camera/facial: `GETCHA!` | https://bowlroll.net/file/261196 | Requires Nico/BowlRoll password flow; terms restrict use to MMD/MMD-derived tools. |
 | Music/off-vocal | https://xfs.jp/jxHc3C | Audio rights are not cleared for bundling/redistribution. |
 | Stage: `新场景 - HZ-D` | No public download found | YouTube mirror says `尚未公配`, not publicly distributed. |
