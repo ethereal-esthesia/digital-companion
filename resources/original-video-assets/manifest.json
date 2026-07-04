@@ -103,6 +103,34 @@
             "reason": "Reference-only unless its download/license terms are separately reviewed."
           }
         ]
+      },
+      {
+        "id": "sameko-saba-abakat-booth",
+        "name": "Sameko Saba / Fan Made 3D VRChat Avatar",
+        "character": "Sameko Saba",
+        "creator": "Abakat_VT",
+        "sourceVideo": "https://www.youtube.com/watch?v=ZqR6xMDtOJU",
+        "sourceVideoTitle": "【MMD】Sameko Saba (GIMMExGIMME [Cover])",
+        "sourceUrl": "https://booth.pm/ja/items/7211882",
+        "localPath": "model/sameko-saba-abakat/",
+        "ignoredLocalPath": "local-resources/original-video-assets/model/sameko-saba-abakat/",
+        "licenseStatus": "paid-manual-download-needs-terms-review",
+        "licenseNotes": "model/SAMEKO_SABA_ABAKAT_LICENSE_NOTES.md",
+        "downloadSources": [
+          {
+            "label": "BOOTH VRChat avatar listing",
+            "url": "https://booth.pm/ja/items/7211882",
+            "mode": "manual-paid",
+            "reason": "Paid download; do not automate purchase or redistribute downloaded files."
+          }
+        ],
+        "formats": [
+          "vrm",
+          "unitypackage",
+          "fbx",
+          "blend",
+          "textures"
+        ]
       }
     ],
     "motion": {

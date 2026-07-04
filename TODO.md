@@ -11,6 +11,8 @@
 
 - [ ] Add a loader panel for selecting scenes from config.
 - [ ] Add PMX/PMD model loading with a permissive test asset first.
+- [ ] Normalize model internals into renderer-facing buckets: meshes, skeleton, materials, blend shapes/expressions, physics, animations, and metadata.
+- [ ] Map PMX and VRM into that model bucket schema without assuming every format exposes the same fields.
 - [ ] Add VMD motion probing and compatibility checks before animation playback.
 - [ ] Add audio playback and timeline sync for local files.
 - [ ] Add stage loading with separate transform controls.

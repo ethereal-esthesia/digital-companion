@@ -57,6 +57,52 @@ const downloads = [
   }
 ];
 
+const modelPresetManualSources = (manifest.assets.modelPresets || []).flatMap((preset) => {
+  const destination = preset.localPath || "model/";
+  const sources = [];
+
+  if (preset.sourceUrl) {
+    sources.push({
+      label: `Model preset: ${preset.name || preset.id}`,
+      url: preset.sourceUrl,
+      reason: "paid/manual shop or member source and bundled terms review required",
+      destination
+    });
+  }
+
+  for (const source of preset.downloadSources || []) {
+    sources.push({
+      label: `${preset.name || preset.id}: ${source.label}`,
+      url: source.url,
+      reason: source.reason || "manual download and terms review required",
+      destination
+    });
+  }
+
+  return sources;
+});
+
+const modelPresetDescriptionSources = (manifest.assets.modelPresets || []).flatMap((preset) => {
+  const sources = [];
+
+  if (preset.sourceVideo) {
+    sources.push({
+      label: `${preset.name || preset.id} reference video`,
+      url: preset.sourceVideo,
+      kind: "html-meta"
+    });
+  }
+  if (preset.sourceUrl) {
+    sources.push({
+      label: `${preset.name || preset.id} listing`,
+      url: preset.sourceUrl,
+      kind: "html-meta"
+    });
+  }
+
+  return sources;
+});
+
 const manualSources = [
   {
     label: "Model archive",
@@ -64,18 +110,7 @@ const manualSources = [
     reason: "login/readme review required",
     destination: "model/"
   },
-  {
-    label: "Model preset: Sameko Saba",
-    url: manifest.assets.modelPresets[0].sourceUrl,
-    reason: "paid/manual shop or member source and bundled terms review required",
-    destination: "model/sameko-saba/"
-  },
-  {
-    label: "Sameko Saba BOOTH 3D Set",
-    url: manifest.assets.modelPresets[0].downloadSources[1].url,
-    reason: "paid download; purchase and terms must stay manual",
-    destination: "model/sameko-saba/"
-  },
+  ...modelPresetManualSources,
   {
     label: "Motion/camera/facial archive",
     url: "https://bowlroll.net/file/261196",
@@ -115,16 +150,7 @@ const descriptionSources = [
     sourceFile: "sources/bilibili-BV1MsZtYCE4t.json",
     kind: "bilibili-json"
   },
-  {
-    label: "Sameko Saba YouTube reference video",
-    url: manifest.assets.modelPresets[0].sourceVideo,
-    kind: "html-meta"
-  },
-  {
-    label: "Sameko Saba model listing",
-    url: manifest.assets.modelPresets[0].sourceUrl,
-    kind: "html-meta"
-  },
+  ...modelPresetDescriptionSources,
   {
     label: "Model Nico description",
     url: manifest.assets.model.sourceUrl,

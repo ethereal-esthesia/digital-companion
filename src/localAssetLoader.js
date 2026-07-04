@@ -19,7 +19,7 @@ function joinUrl(root, path) {
 }
 
 function expectsBinaryAsset(url) {
-  return /\.(pmx|pmd|vmd|vpd|mp3|wav|ogg|flac|zip|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);
+  return /\.(pmx|pmd|vrm|vmd|vpd|mp3|wav|ogg|flac|zip|unitypackage|fbx|blend|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);
 }
 
 function isHtmlFallback(url, response) {

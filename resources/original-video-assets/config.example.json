@@ -25,6 +25,14 @@
           "kind": "pmx",
           "required": false,
           "sourceId": "sameko-saba-snowcherry"
+        },
+        {
+          "id": "sameko-saba-abakat",
+          "label": "Sameko Saba (Abakat VRM)",
+          "path": "model/sameko-saba-abakat/VRM/Sameko Saba VRM.vrm",
+          "kind": "vrm",
+          "required": false,
+          "sourceId": "sameko-saba-abakat-booth"
         }
       ],
       "modelPreview": {

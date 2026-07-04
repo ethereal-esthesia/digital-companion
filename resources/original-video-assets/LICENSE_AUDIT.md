@@ -12,6 +12,7 @@ This is a working rights/usage audit for the assets credited by the source video
 | Stage: `新场景 - HZ-D` | Unknown | Source video names the stage but gives no distribution link. Find original source and terms before import. |
 | Model: `つみ式ミクさんv2.1` | Needs bundled README/license | BowlRoll page confirms file `つみ式ミクさんv2.1.zip`, but download requires login and public page does not show terms. Inspect bundled readme before using. |
 | Model preset: `Sameko Saba 3D Model` | Paid/manual, needs terms review | Public listing points to BOOTH/Patreon downloads for PMX/VRM/Blend/VRChat formats. Purchase/access manually, inspect bundled terms, and do not redistribute. |
+| Model preset: `Sameko Saba / Fan Made 3D VRChat Avatar` | Paid/manual, local-only pending terms review | BOOTH download includes VRM/Unity/FBX/Blend/textures. Preserve locally, do not redistribute, and treat as personal/demo only until seller terms are reviewed. |
 | Motion/camera/facial: `GETCHA! - apr(社会の窓P)` | Restricted | Noncommercial MMD/MMD-derived-tool use appears allowed with credits. Direct Three.js/web use needs permission or clarification. |
 | Music: `GETCHA!` by Giga/KIRA | No reuse license found | Do not bundle the recording or instrumental unless a clear license/permission is obtained. Link/reference only for now. |
 | Choreography: 足太ぺんた `GETCHA!` dance | Credit dependency | apr terms require crediting the choreography/trace source when using the motion. |
@@ -59,6 +60,16 @@ Sources:
 - https://www.deviantart.com/xxsnowcherryxx/art/MMD-VRChat-Sameko-Saba-3D-Model-Download-1231830604
 - https://xsnowcherry.booth.pm/items/7323959
 - https://www.patreon.com/posts/vtuber-sameko-3-136835269
+
+### Model preset: Sameko Saba Abakat VRM
+
+The Abakat_VT BOOTH listing is a paid fan-made VRChat avatar package. The public listing describes a VRChat prefab and a VRM model, and the local archive includes VRM, Unity package, FBX, Blend, and texture files. The extracted archive inspected here did not include a separate top-level README/license file, so the BOOTH listing and any seller terms visible at purchase time are the current authority.
+
+Use this preset for local personal/demo testing only. Do not redistribute the downloaded files, converted files, textures, Unity package, or extracted parts from this repo or app bundle.
+
+Sources:
+
+- https://booth.pm/ja/items/7211882
 
 ### Music
 

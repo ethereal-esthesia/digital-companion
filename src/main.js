@@ -1,8 +1,10 @@
 import "./styles.css";
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { MMDLoader } from "three-stdlib";
 import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 
@@ -127,6 +129,8 @@ let cameraMode = 0;
 let localAssetState = null;
 let realDancer = null;
 let activeDancer = null;
+let activeVrm = null;
+let activeModelKind = "pmx";
 
 const materials = {
   skin: new THREE.MeshStandardMaterial({
@@ -1160,9 +1164,9 @@ function updateModelAssetStatus() {
 
   assetStatus.dataset.state = "ready";
   assetStatus.innerHTML = `
-    <span>PMX model</span>
+    <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)}` : ""} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${realDancer.skeleton?.bones?.length || 0} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.materialPreset} · ${modelPreviewOptions.lighting}${modelPreviewOptions.materialBoost ? ` + boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)}` : ""} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
@@ -1371,6 +1375,36 @@ function getMaterialList(material) {
   return Array.isArray(material) ? material : [material];
 }
 
+function getModelKind(asset) {
+  const configuredKind = String(asset?.kind || "").toLowerCase();
+  if (configuredKind) {
+    return configuredKind;
+  }
+
+  const path = String(asset?.path || asset?.url || "").toLowerCase();
+  if (path.endsWith(".vrm")) {
+    return "vrm";
+  }
+  if (path.endsWith(".pmd")) {
+    return "pmd";
+  }
+  return "pmx";
+}
+
+function getModelFormatLabel(kind = activeModelKind) {
+  return String(kind || "model").toUpperCase();
+}
+
+function countModelBones(mesh) {
+  let bones = 0;
+  mesh?.traverse?.((object) => {
+    if (object.isBone) {
+      bones += 1;
+    }
+  });
+  return bones || mesh?.skeleton?.bones?.length || 0;
+}
+
 function rememberOriginalMaterialState(material) {
   if (!material || originalMaterialStates.has(material)) {
     return;
@@ -1481,7 +1515,7 @@ function getMmdAlphaLayerStats(mesh = realDancer) {
   return stats;
 }
 
-function setModelMaterials(mesh) {
+function setModelMaterials(mesh, kind = activeModelKind) {
   mesh.traverse((object) => {
     if (!object.isMesh) {
       return;
@@ -1502,8 +1536,13 @@ function setModelMaterials(mesh) {
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;
       }
-      queueTextureDepthModeSync(material);
-      if (!syncMmdMaterialDepthMode(material)) {
+      const syncedMmdDepth = kind === "pmx" || kind === "pmd"
+        ? syncMmdMaterialDepthMode(material)
+        : false;
+      if (kind === "pmx" || kind === "pmd") {
+        queueTextureDepthModeSync(material);
+      }
+      if (!syncedMmdDepth) {
         material.transparent = material.opacity < 1;
         material.depthWrite = material.opacity >= 1;
       }
@@ -1521,6 +1560,91 @@ function setModelMaterials(mesh) {
   });
 }
 
+function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset), vrm = null } = {}) {
+  modelPreviewOptions = getModelPreviewOptions(localAssetState?.scene);
+  updatePreviewControls();
+  realDancer = mesh;
+  activeVrm = vrm;
+  activeModelKind = kind;
+  window.localModel = realDancer;
+  window.localVrm = activeVrm;
+  realDancer.name = modelAsset.label || `Local ${getModelFormatLabel(kind)} model`;
+  setModelMaterials(realDancer, kind);
+  frameLoadedModel(realDancer);
+  if (kind === "vrm") {
+    realDancer.rotation.y = Math.PI;
+    realDancer.updateMatrixWorld(true);
+  }
+  const blinkTargets = configureBlink(realDancer);
+  populateEyeMorphSelect(realDancer);
+  scene.add(realDancer);
+  dancer.visible = false;
+  stage.visible = false;
+  modelPreview.visible = true;
+  if (modelGuideLine) {
+    modelGuideLine.visible = false;
+  }
+  modelAmbientLight.visible = true;
+  modelFillLight.visible = true;
+  modelSideLight.visible = true;
+  modelHairLight.visible = true;
+  scene.fog = null;
+  applyModelPreviewLighting();
+  activeDancer = realDancer;
+  window.localModelDebug = {
+    name: realDancer.name,
+    kind,
+    modelPath: modelAsset.path,
+    modelPreset: modelAsset.id || "default",
+    bones: countModelBones(realDancer),
+    blinkMorphs: blinkTargets.map((target) => target.name),
+    eyeMorphs: eyeMorphController.options.map((option) => option.name),
+    eyeMorph: "Default eyes",
+    position: realDancer.position.toArray(),
+    scale: realDancer.scale.toArray(),
+    stageLighting: modelPreviewOptions.stageLighting,
+    visible: realDancer.visible,
+    vrmMeta: activeVrm?.meta || null
+  };
+  updateLocalModelDebug();
+  return realDancer;
+}
+
+function loadPmxModel(modelAsset) {
+  const loader = new MMDLoader();
+  const kind = getModelKind(modelAsset);
+  return new Promise((resolve, reject) => {
+    loader.load(
+      modelAsset.url,
+      (mesh) => resolve(activateLoadedModel(mesh, modelAsset, { kind })),
+      undefined,
+      reject
+    );
+  });
+}
+
+function loadVrmModel(modelAsset) {
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      modelAsset.url,
+      (gltf) => {
+        const vrm = gltf.userData.vrm;
+        if (!vrm?.scene) {
+          reject(new Error("VRM file did not contain a usable VRM scene"));
+          return;
+        }
+        VRMUtils.rotateVRM0(vrm);
+        resolve(activateLoadedModel(vrm.scene, modelAsset, { kind: "vrm", vrm }));
+      },
+      undefined,
+      reject
+    );
+  });
+}
+
 function loadConfiguredModel(state) {
   const modelAsset = state.selectedModelPreset || state.assets.find((asset) => asset.name === "model");
   if (!modelAsset?.ok || !modelAsset.url) {
@@ -1534,54 +1658,8 @@ function loadConfiguredModel(state) {
     <small>${modelAsset.label || modelAsset.path}</small>
   `;
 
-  const loader = new MMDLoader();
-  return new Promise((resolve, reject) => {
-    loader.load(
-      modelAsset.url,
-      (mesh) => {
-        modelPreviewOptions = getModelPreviewOptions(state.scene);
-        updatePreviewControls();
-        realDancer = mesh;
-        window.localModel = realDancer;
-        realDancer.name = modelAsset.label || "Local PMX model";
-        setModelMaterials(realDancer);
-        frameLoadedModel(realDancer);
-        const blinkTargets = configureBlink(realDancer);
-        populateEyeMorphSelect(realDancer);
-        scene.add(realDancer);
-        dancer.visible = false;
-        stage.visible = false;
-        modelPreview.visible = true;
-        if (modelGuideLine) {
-          modelGuideLine.visible = false;
-        }
-        modelAmbientLight.visible = true;
-        modelFillLight.visible = true;
-        modelSideLight.visible = true;
-        modelHairLight.visible = true;
-        scene.fog = null;
-        applyModelPreviewLighting();
-        activeDancer = realDancer;
-        window.localModelDebug = {
-          name: realDancer.name,
-          modelPath: modelAsset.path,
-          modelPreset: modelAsset.id || "default",
-          bones: realDancer.skeleton?.bones?.length || 0,
-          blinkMorphs: blinkTargets.map((target) => target.name),
-          eyeMorphs: eyeMorphController.options.map((option) => option.name),
-          eyeMorph: "Default eyes",
-          position: realDancer.position.toArray(),
-          scale: realDancer.scale.toArray(),
-          stageLighting: modelPreviewOptions.stageLighting,
-          visible: realDancer.visible
-        };
-        updateLocalModelDebug();
-        resolve(realDancer);
-      },
-      undefined,
-      reject
-    );
-  });
+  const kind = getModelKind(modelAsset);
+  return kind === "vrm" ? loadVrmModel(modelAsset) : loadPmxModel(modelAsset);
 }
 
 function render() {
@@ -1594,6 +1672,7 @@ function render() {
     animateDancer(elapsed);
     animateStage(elapsed);
   } else {
+    activeVrm?.update?.(delta);
     updateBlink(delta);
     applyModelPreviewLighting();
   }
