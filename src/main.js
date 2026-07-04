@@ -9,6 +9,7 @@ import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
 const cameraModeButton = document.querySelector("#cameraMode");
+const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const stageLightingControl = stageLightingSlider.closest(".stage-light-control");
 const assetStatus = document.querySelector("#assetStatus");
@@ -36,6 +37,11 @@ const blinkController = {
   duration: 0.16,
   nextAt: THREE.MathUtils.randFloat(1.2, 3.4),
   doubleBlinkQueued: false
+};
+
+const eyeMorphController = {
+  options: [],
+  selectedId: "default"
 };
 
 let modelPreviewOptions = { ...DEFAULT_MODEL_PREVIEW_OPTIONS };
@@ -757,6 +763,83 @@ function smoothStep(value) {
   return t * t * (3 - 2 * t);
 }
 
+function isEyeMorphName(name) {
+  return /目|瞳|眼|まばたき|ウィンク|笑い|びっくり|はぅ|なごみ|じと|ハート|星|eye|blink|wink|iris|pupil/i.test(
+    name
+  );
+}
+
+function collectEyeMorphOptions(mesh) {
+  const options = new Map();
+
+  mesh.traverse((object) => {
+    if (!object.morphTargetDictionary || !object.morphTargetInfluences) {
+      return;
+    }
+
+    Object.entries(object.morphTargetDictionary).forEach(([name, index]) => {
+      if (!isEyeMorphName(name)) {
+        return;
+      }
+
+      if (!options.has(name)) {
+        options.set(name, {
+          id: `eye-${options.size}`,
+          name,
+          targets: []
+        });
+      }
+
+      options.get(name).targets.push({ object, index });
+    });
+  });
+
+  return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function setEyeMorphWeight(option, weight) {
+  option.targets.forEach((target) => {
+    target.object.morphTargetInfluences[target.index] = weight;
+  });
+}
+
+function applyEyeMorphSelection(id = eyeMorphController.selectedId) {
+  eyeMorphController.selectedId = id;
+  eyeMorphController.options.forEach((option) => {
+    setEyeMorphWeight(option, option.id === id ? 1 : 0);
+  });
+  document.documentElement.dataset.eyeMorph = id;
+  if (window.localModelDebug) {
+    const selected = eyeMorphController.options.find((option) => option.id === id);
+    window.localModelDebug.eyeMorph = selected?.name || "Default eyes";
+  }
+}
+
+function populateEyeMorphSelect(mesh) {
+  eyeMorphController.options = collectEyeMorphOptions(mesh);
+  eyeMorphController.selectedId = "default";
+
+  eyeMorphSelect.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "default";
+  defaultOption.textContent = "Default eyes";
+  eyeMorphSelect.append(defaultOption);
+
+  eyeMorphController.options.forEach((option) => {
+    const optionElement = document.createElement("option");
+    optionElement.value = option.id;
+    optionElement.textContent = option.name;
+    eyeMorphSelect.append(optionElement);
+  });
+
+  eyeMorphSelect.disabled = eyeMorphController.options.length === 0;
+  eyeMorphSelect.title = eyeMorphController.options.length
+    ? `${eyeMorphController.options.length} eye morphs`
+    : "No eye morphs found";
+  document.documentElement.dataset.eyeMorphCount = String(eyeMorphController.options.length);
+  applyEyeMorphSelection("default");
+}
+
 function setBlinkWeight(weight) {
   blinkController.targets.forEach((target) => {
     target.object.morphTargetInfluences[target.index] = weight;
@@ -1029,6 +1112,7 @@ function loadConfiguredModel(state) {
         setModelMaterials(realDancer);
         frameLoadedModel(realDancer);
         const blinkTargets = configureBlink(realDancer);
+        populateEyeMorphSelect(realDancer);
         scene.add(realDancer);
         dancer.visible = false;
         stage.visible = false;
@@ -1047,6 +1131,8 @@ function loadConfiguredModel(state) {
           name: realDancer.name,
           bones: realDancer.skeleton?.bones?.length || 0,
           blinkMorphs: blinkTargets.map((target) => target.name),
+          eyeMorphs: eyeMorphController.options.map((option) => option.name),
+          eyeMorph: "Default eyes",
           position: realDancer.position.toArray(),
           scale: realDancer.scale.toArray(),
           stageLighting: modelPreviewOptions.stageLighting,
@@ -1097,6 +1183,10 @@ cameraModeButton.addEventListener("click", () => {
   cameraMode = (cameraMode + 1) % 3;
   drag.yaw = 0;
   drag.pitch = 0;
+});
+
+eyeMorphSelect.addEventListener("change", (event) => {
+  applyEyeMorphSelection(event.currentTarget.value);
 });
 
 stageLightingSlider.addEventListener("input", (event) => {
