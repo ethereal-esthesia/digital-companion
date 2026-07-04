@@ -42,7 +42,7 @@ const MODEL_MATERIAL_PRESET_CHOICES = ["native", "video"];
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
-const PMX_ALPHA_LAYER_POLYGON_OFFSET = -1;
+const PMX_ALPHA_CUTOUT_POLYGON_OFFSET = -0.35;
 const PREVIEW_QUERY_KEYS = {
   mode: "modelMode",
   materialPreset: "modelMaterialPreset",
@@ -240,7 +240,7 @@ const clayPreviewMaterial = new THREE.MeshStandardMaterial({
 });
 const originalMeshMaterials = new WeakMap();
 const originalMaterialStates = new WeakMap();
-const alphaLayerTextureCallbackMaterials = new WeakSet();
+const textureDepthModeCallbackMaterials = new WeakSet();
 
 function addBox(parent, size, position, material, rotation = [0, 0, 0]) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
@@ -1096,6 +1096,7 @@ function updatePreviewControls() {
 function updateLocalModelDebug() {
   const alphaLayerStats = getMmdAlphaLayerStats();
   document.documentElement.dataset.pmxAlphaLayers = String(alphaLayerStats.active);
+  document.documentElement.dataset.pmxAlphaCutouts = String(alphaLayerStats.cutouts);
 
   if (!window.localModelDebug) {
     return;
@@ -1223,50 +1224,73 @@ function applyVideoMaterialPreset(material) {
   }
 }
 
-function isMmdAlphaLayerMaterial(material) {
-  return Boolean(
-    material?.transparent ||
-      material?.opacity < 1 ||
-      material?.alphaMap ||
-      material?.map?.transparent
-  );
+function isMmdTransparentLayerMaterial(material) {
+  return Boolean(material?.opacity < 1 || material?.alphaMap);
 }
 
-function applyMmdAlphaLayerMaterial(material) {
+function isMmdAlphaCutoutMaterial(material) {
+  return Boolean(material?.map?.transparent);
+}
+
+function applyMmdTransparentLayerMaterial(material) {
   material.transparent = true;
   material.depthWrite = false;
+  material.depthTest = true;
+  material.alphaTest = Math.max(material.alphaTest || 0, PMX_ALPHA_LAYER_ALPHA_TEST);
+  material.polygonOffset = false;
+  material.polygonOffsetFactor = 0;
+  material.polygonOffsetUnits = 0;
+  material.needsUpdate = true;
+}
+
+function applyMmdAlphaCutoutMaterial(material) {
+  material.transparent = false;
+  material.depthWrite = true;
   material.depthTest = true;
   material.alphaTest = Math.max(material.alphaTest || 0, PMX_ALPHA_LAYER_ALPHA_TEST);
   material.polygonOffset = true;
   material.polygonOffsetFactor = Math.min(
     material.polygonOffsetFactor || 0,
-    PMX_ALPHA_LAYER_POLYGON_OFFSET
+    PMX_ALPHA_CUTOUT_POLYGON_OFFSET
   );
   material.polygonOffsetUnits = Math.min(
     material.polygonOffsetUnits || 0,
-    PMX_ALPHA_LAYER_POLYGON_OFFSET
+    PMX_ALPHA_CUTOUT_POLYGON_OFFSET
   );
   material.needsUpdate = true;
 }
 
-function syncMmdAlphaLayerMaterial(material) {
-  if (!isMmdAlphaLayerMaterial(material)) {
+function syncMmdMaterialDepthMode(material) {
+  if (isMmdTransparentLayerMaterial(material)) {
+    applyMmdTransparentLayerMaterial(material);
+    return true;
+  }
+
+  if (isMmdAlphaCutoutMaterial(material)) {
+    applyMmdAlphaCutoutMaterial(material);
+    return true;
+  }
+
+  return false;
+}
+
+function syncMmdTextureDepthMode(material) {
+  if (!isMmdAlphaCutoutMaterial(material)) {
     return false;
   }
 
-  applyMmdAlphaLayerMaterial(material);
+  applyMmdAlphaCutoutMaterial(material);
   return true;
 }
 
-function queueTextureAlphaLayerSync(material) {
-  if (!material?.map || alphaLayerTextureCallbackMaterials.has(material)) {
+function queueTextureDepthModeSync(material) {
+  if (!material?.map || textureDepthModeCallbackMaterials.has(material)) {
     return;
   }
 
-  alphaLayerTextureCallbackMaterials.add(material);
+  textureDepthModeCallbackMaterials.add(material);
   const syncTextureAlpha = () => {
-    if (material.map?.transparent) {
-      applyMmdAlphaLayerMaterial(material);
+    if (syncMmdTextureDepthMode(material)) {
       updateLocalModelDebug();
     }
   };
@@ -1375,6 +1399,7 @@ function restoreMeshMaterials(object) {
 function getMmdAlphaLayerStats(mesh = realDancer) {
   const stats = {
     active: 0,
+    cutouts: 0,
     transparentTextures: 0,
     transparentMaterials: 0,
     alphaMaps: 0
@@ -1406,6 +1431,14 @@ function getMmdAlphaLayerStats(mesh = realDancer) {
       if (material.transparent && material.depthWrite === false) {
         stats.active += 1;
       }
+      if (
+        material.map?.transparent &&
+        material.transparent === false &&
+        material.depthWrite === true &&
+        material.alphaTest > 0
+      ) {
+        stats.cutouts += 1;
+      }
     });
   });
 
@@ -1433,9 +1466,9 @@ function setModelMaterials(mesh) {
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;
       }
-      queueTextureAlphaLayerSync(material);
-      if (!syncMmdAlphaLayerMaterial(material)) {
-        material.transparent = material.transparent || material.opacity < 1;
+      queueTextureDepthModeSync(material);
+      if (!syncMmdMaterialDepthMode(material)) {
+        material.transparent = material.opacity < 1;
         material.depthWrite = material.opacity >= 1;
       }
       if (modelPreviewOptions.materialPreset === "video") {
