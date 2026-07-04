@@ -42,7 +42,6 @@ const MODEL_MATERIAL_PRESET_CHOICES = ["native", "video"];
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
-const PMX_ALPHA_CUTOUT_POLYGON_OFFSET = -0.35;
 const PREVIEW_QUERY_KEYS = {
   mode: "modelMode",
   materialPreset: "modelMaterialPreset",
@@ -1248,15 +1247,9 @@ function applyMmdAlphaCutoutMaterial(material) {
   material.depthWrite = true;
   material.depthTest = true;
   material.alphaTest = Math.max(material.alphaTest || 0, PMX_ALPHA_LAYER_ALPHA_TEST);
-  material.polygonOffset = true;
-  material.polygonOffsetFactor = Math.min(
-    material.polygonOffsetFactor || 0,
-    PMX_ALPHA_CUTOUT_POLYGON_OFFSET
-  );
-  material.polygonOffsetUnits = Math.min(
-    material.polygonOffsetUnits || 0,
-    PMX_ALPHA_CUTOUT_POLYGON_OFFSET
-  );
+  material.polygonOffset = false;
+  material.polygonOffsetFactor = 0;
+  material.polygonOffsetUnits = 0;
   material.needsUpdate = true;
 }
 
