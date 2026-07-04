@@ -1381,6 +1381,10 @@ function countModelBones(mesh) {
   return bones || mesh?.skeleton?.bones?.length || 0;
 }
 
+function isGeneratedVrmOutlineMaterial(material) {
+  return Boolean(material?.isOutline || /\s+\(Outline\)$/i.test(material?.name || ""));
+}
+
 function rememberOriginalMaterialState(material) {
   if (!material || originalMaterialStates.has(material)) {
     return;
@@ -1398,6 +1402,7 @@ function rememberOriginalMaterialState(material) {
     polygonOffset: material.polygonOffset,
     polygonOffsetFactor: material.polygonOffsetFactor,
     polygonOffsetUnits: material.polygonOffsetUnits,
+    visible: material.visible,
     side: material.side
   });
 }
@@ -1425,6 +1430,7 @@ function restoreOriginalMaterialState(material) {
   material.polygonOffset = state.polygonOffset;
   material.polygonOffsetFactor = state.polygonOffsetFactor;
   material.polygonOffsetUnits = state.polygonOffsetUnits;
+  material.visible = state.visible;
   material.side = state.side;
 }
 
@@ -1508,6 +1514,12 @@ function setModelMaterials(mesh, kind = activeModelKind) {
     restoreMeshMaterials(object);
     const meshMaterials = getMaterialList(object.material);
     meshMaterials.forEach((material) => {
+      if (kind === "vrm" && isGeneratedVrmOutlineMaterial(material)) {
+        material.visible = false;
+        material.needsUpdate = true;
+        return;
+      }
+
       material.side = THREE.DoubleSide;
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace;

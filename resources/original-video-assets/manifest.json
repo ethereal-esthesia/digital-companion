@@ -111,7 +111,7 @@
         "creator": "Abakat_VT",
         "sourceVideo": "https://www.youtube.com/watch?v=ZqR6xMDtOJU",
         "sourceVideoTitle": "【MMD】Sameko Saba (GIMMExGIMME [Cover])",
-        "sourceUrl": "https://booth.pm/ja/items/7211882",
+        "sourceUrl": "https://abakat.booth.pm/items/7211882",
         "localPath": "model/sameko-saba-abakat/",
         "ignoredLocalPath": "local-resources/original-video-assets/model/sameko-saba-abakat/",
         "licenseStatus": "paid-manual-download-needs-terms-review",
@@ -119,9 +119,15 @@
         "downloadSources": [
           {
             "label": "BOOTH VRChat avatar listing",
-            "url": "https://booth.pm/ja/items/7211882",
+            "url": "https://abakat.booth.pm/items/7211882",
             "mode": "manual-paid",
             "reason": "Paid download; do not automate purchase or redistribute downloaded files."
+          },
+          {
+            "label": "Generic BOOTH item page",
+            "url": "https://booth.pm/ja/items/7211882",
+            "mode": "manual-paid",
+            "reason": "Alternate BOOTH URL for the same paid item."
           }
         ],
         "formats": [

@@ -8,7 +8,8 @@ Status: paid/manual BOOTH download, local-only until terms are reviewed.
 
 ## What We Verified
 
-- BOOTH item: https://booth.pm/ja/items/7211882
+- Creator BOOTH item: https://abakat.booth.pm/items/7211882
+- Generic BOOTH item page: https://booth.pm/ja/items/7211882
 - The public listing describes a fan-made VRChat avatar download.
 - The public listing says the package includes a VRChat prefab and a VRM model.
 - The downloaded archive also includes Blend, FBX, textures, and a Unity package.

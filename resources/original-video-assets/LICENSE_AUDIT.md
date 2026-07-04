@@ -70,6 +70,7 @@ Use this preset for local personal/demo testing only. Do not redistribute the do
 Sources:
 
 - https://booth.pm/ja/items/7211882
+- https://abakat.booth.pm/items/7211882
 
 ### Music
 
