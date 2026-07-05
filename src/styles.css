@@ -461,7 +461,9 @@ body,
 }
 
 .model-select-icon,
-.eye-select-icon {
+.eye-select-icon,
+.face-select-icon,
+.outfit-select-icon {
   position: relative;
   flex: 0 0 auto;
   width: 24px;
@@ -519,6 +521,63 @@ body,
   border-radius: 999px;
   background: currentColor;
   box-shadow: 0 0 10px rgb(73 244 255 / 72%);
+  content: "";
+}
+
+.face-select-icon {
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  color: rgb(255 159 225 / 92%);
+  transform: scale(0.82);
+}
+
+.face-select-icon::before {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 8px 0 0 currentColor;
+  content: "";
+}
+
+.face-select-icon::after {
+  position: absolute;
+  left: 6px;
+  top: 13px;
+  width: 10px;
+  height: 4px;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0 0 999px 999px;
+  content: "";
+}
+
+.outfit-select-icon {
+  color: rgb(255 255 255 / 88%);
+}
+
+.outfit-select-icon::before {
+  position: absolute;
+  left: 5px;
+  top: 3px;
+  width: 14px;
+  height: 17px;
+  border: 2px solid currentColor;
+  border-radius: 7px 7px 4px 4px;
+  content: "";
+}
+
+.outfit-select-icon::after {
+  position: absolute;
+  left: 3px;
+  top: 5px;
+  width: 18px;
+  height: 6px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
   content: "";
 }
 

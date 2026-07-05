@@ -15,6 +15,8 @@ const cameraModeButton = document.querySelector("#cameraMode");
 const previewControls = document.querySelector("#previewControls");
 const modelPresetSelect = document.querySelector("#modelPresetSelect");
 const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
+const faceEmoteSelect = document.querySelector("#faceEmoteSelect");
+const outfitMorphSelect = document.querySelector("#outfitMorphSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
@@ -86,6 +88,27 @@ const DEPRECATED_PREVIEW_QUERY_KEYS = ["modelMaterialPreset", "materialBoost"];
 const BLINK_MORPH_NAMES = ["まばたき", "blink", "Blink", "BLINK"];
 const BLINK_CLOSE_RATIO = 0.32;
 const BLINK_HOLD_RATIO = 0.18;
+const VRM_BOTH_EYE_EXPRESSION_LABELS = new Map([
+  ["blink", "Blink"],
+  ["lookUp", "Look up"],
+  ["lookDown", "Look down"],
+  ["lookLeft", "Look left"],
+  ["lookRight", "Look right"]
+]);
+const VRM_FACE_EXPRESSION_LABELS = new Map([
+  ["happy", "Happy"],
+  ["angry", "Angry"],
+  ["sad", "Sad"],
+  ["relaxed", "Relaxed"],
+  ["surprised", "Surprised"]
+]);
+const VRM_EXPRESSION_BACKED_RAW_EYE_MORPHS = new Set([
+  "BLINK",
+  "LOOKUP",
+  "LOOKDOWN",
+  "LOOKLEFT",
+  "LOOKRIGHT"
+]);
 
 const blinkController = {
   targets: [],
@@ -98,6 +121,16 @@ const blinkController = {
 };
 
 const eyeMorphController = {
+  options: [],
+  selectedId: "default"
+};
+
+const faceEmoteController = {
+  options: [],
+  selectedId: "default"
+};
+
+const outfitMorphController = {
   options: [],
   selectedId: "default"
 };
@@ -854,12 +887,82 @@ function smoothStep(value) {
 }
 
 function isEyeMorphName(name) {
-  return /目|瞳|眼|まばたき|ウィンク|笑い|びっくり|はぅ|なごみ|じと|ハート|星|eye|blink|wink|iris|pupil/i.test(
+  return /目|瞳|眼|まばたき|ウィンク|笑い|びっくり|はぅ|なごみ|じと|ハート|星|eye|eyes|blink|wink|iris|pupil|star|cross/i.test(
     name
   );
 }
 
-function collectEyeMorphOptions(mesh) {
+function isOneSidedEyeMorphName(name) {
+  return /(^|[_\-\s.])(l|r|left|right)([_\-\s.]|$)|(left|right)$|左|右/i.test(name);
+}
+
+function isOutfitMorphName(name) {
+  return /shirt|dress|cloth|clothes|skirt|bikini|ribbon|outfit|costume|服|衣|裙/i.test(name);
+}
+
+function formatMorphLabel(name) {
+  return name
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function morphAttributeHasDelta(attribute) {
+  if (!attribute?.array) {
+    return false;
+  }
+
+  return attribute.array.some((value) => Math.abs(value) > 0.000001);
+}
+
+function morphTargetHasGeometryDelta(object, index) {
+  const morphAttributes = object.geometry?.morphAttributes;
+  if (!morphAttributes) {
+    return false;
+  }
+
+  return ["position", "normal", "color"].some((attributeName) =>
+    morphAttributeHasDelta(morphAttributes[attributeName]?.[index])
+  );
+}
+
+function collectVrmEyeExpressionOptions(vrm) {
+  const expressionMap = vrm?.expressionManager?.expressionMap;
+  if (!expressionMap) {
+    return [];
+  }
+
+  return [...VRM_BOTH_EYE_EXPRESSION_LABELS.entries()]
+    .filter(([expressionName]) => expressionMap[expressionName])
+    .map(([expressionName, label], index) => ({
+      id: `eye-expression-${index}`,
+      name: label,
+      expressionName
+    }));
+}
+
+function hasExpressionBinds(expression) {
+  return (expression?.binds?.length || 0) > 0;
+}
+
+function collectVrmFaceEmoteOptions(vrm) {
+  const expressionMap = vrm?.expressionManager?.expressionMap;
+  if (!expressionMap) {
+    return [];
+  }
+
+  return [...VRM_FACE_EXPRESSION_LABELS.entries()]
+    .filter(([expressionName]) => hasExpressionBinds(expressionMap[expressionName]))
+    .map(([expressionName, label], index) => ({
+      id: `face-expression-${index}`,
+      name: label,
+      expressionName
+    }));
+}
+
+function collectRawEyeMorphOptions(mesh, { bilateralOnly = false, excludeNames = new Set() } = {}) {
   const options = new Map();
 
   mesh.traverse((object) => {
@@ -868,7 +971,12 @@ function collectEyeMorphOptions(mesh) {
     }
 
     Object.entries(object.morphTargetDictionary).forEach(([name, index]) => {
-      if (!isEyeMorphName(name)) {
+      if (
+        !isEyeMorphName(name) ||
+        excludeNames.has(name) ||
+        (bilateralOnly && isOneSidedEyeMorphName(name)) ||
+        !morphTargetHasGeometryDelta(object, index)
+      ) {
         return;
       }
 
@@ -885,6 +993,58 @@ function collectEyeMorphOptions(mesh) {
   });
 
   return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function collectEyeMorphOptions(mesh, vrm = null) {
+  const vrmOptions = collectVrmEyeExpressionOptions(vrm);
+  if (vrmOptions.length === 0) {
+    return collectRawEyeMorphOptions(mesh);
+  }
+
+  const rawBilateralOptions = collectRawEyeMorphOptions(mesh, {
+    bilateralOnly: true,
+    excludeNames: VRM_EXPRESSION_BACKED_RAW_EYE_MORPHS
+  });
+
+  return [...vrmOptions, ...rawBilateralOptions];
+}
+
+function collectOutfitMorphOptions(mesh) {
+  const options = new Map();
+
+  mesh.traverse((object) => {
+    if (!object.morphTargetDictionary || !object.morphTargetInfluences) {
+      return;
+    }
+
+    Object.entries(object.morphTargetDictionary).forEach(([name, index]) => {
+      if (!isOutfitMorphName(name) || !morphTargetHasGeometryDelta(object, index)) {
+        return;
+      }
+
+      if (!options.has(name)) {
+        options.set(name, {
+          id: `outfit-${options.size}`,
+          name: formatMorphLabel(name),
+          rawName: name,
+          targets: []
+        });
+      }
+
+      options.get(name).targets.push({ object, index });
+    });
+  });
+
+  return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+function setVrmExpressionWeight(option, weight) {
+  if (!option?.expressionName || !activeVrm?.expressionManager) {
+    return false;
+  }
+
+  activeVrm.expressionManager.setValue(option.expressionName, weight);
+  return true;
 }
 
 function populateModelPresetSelect(state) {
@@ -924,6 +1084,10 @@ function populateModelPresetSelect(state) {
 }
 
 function setEyeMorphWeight(option, weight) {
+  if (setVrmExpressionWeight(option, weight)) {
+    return;
+  }
+
   option.targets.forEach((target) => {
     target.object.morphTargetInfluences[target.index] = weight;
   });
@@ -941,8 +1105,42 @@ function applyEyeMorphSelection(id = eyeMorphController.selectedId) {
   }
 }
 
-function populateEyeMorphSelect(mesh) {
-  eyeMorphController.options = collectEyeMorphOptions(mesh);
+function setFaceEmoteWeight(option, weight) {
+  setVrmExpressionWeight(option, weight);
+}
+
+function applyFaceEmoteSelection(id = faceEmoteController.selectedId) {
+  faceEmoteController.selectedId = id;
+  faceEmoteController.options.forEach((option) => {
+    setFaceEmoteWeight(option, option.id === id ? 1 : 0);
+  });
+  document.documentElement.dataset.faceEmote = id;
+  if (window.localModelDebug) {
+    const selected = faceEmoteController.options.find((option) => option.id === id);
+    window.localModelDebug.faceEmote = selected?.name || "Default face";
+  }
+}
+
+function setOutfitMorphWeight(option, weight) {
+  option.targets.forEach((target) => {
+    target.object.morphTargetInfluences[target.index] = weight;
+  });
+}
+
+function applyOutfitMorphSelection(id = outfitMorphController.selectedId) {
+  outfitMorphController.selectedId = id;
+  outfitMorphController.options.forEach((option) => {
+    setOutfitMorphWeight(option, option.id === id ? 1 : 0);
+  });
+  document.documentElement.dataset.outfitMorph = id;
+  if (window.localModelDebug) {
+    const selected = outfitMorphController.options.find((option) => option.id === id);
+    window.localModelDebug.outfitMorph = selected?.name || "Default outfit";
+  }
+}
+
+function populateEyeMorphSelect(mesh, vrm = null) {
+  eyeMorphController.options = collectEyeMorphOptions(mesh, vrm);
   eyeMorphController.selectedId = "default";
 
   eyeMorphSelect.innerHTML = "";
@@ -964,6 +1162,56 @@ function populateEyeMorphSelect(mesh) {
     : "No eye morphs found";
   document.documentElement.dataset.eyeMorphCount = String(eyeMorphController.options.length);
   applyEyeMorphSelection("default");
+}
+
+function populateFaceEmoteSelect(vrm = null) {
+  faceEmoteController.options = collectVrmFaceEmoteOptions(vrm);
+  faceEmoteController.selectedId = "default";
+
+  faceEmoteSelect.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "default";
+  defaultOption.textContent = "Default face";
+  faceEmoteSelect.append(defaultOption);
+
+  faceEmoteController.options.forEach((option) => {
+    const optionElement = document.createElement("option");
+    optionElement.value = option.id;
+    optionElement.textContent = option.name;
+    faceEmoteSelect.append(optionElement);
+  });
+
+  faceEmoteSelect.disabled = faceEmoteController.options.length === 0;
+  faceEmoteSelect.title = faceEmoteController.options.length
+    ? `${faceEmoteController.options.length} face emotes`
+    : "No face emotes found";
+  document.documentElement.dataset.faceEmoteCount = String(faceEmoteController.options.length);
+  applyFaceEmoteSelection("default");
+}
+
+function populateOutfitMorphSelect(mesh) {
+  outfitMorphController.options = collectOutfitMorphOptions(mesh);
+  outfitMorphController.selectedId = "default";
+
+  outfitMorphSelect.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "default";
+  defaultOption.textContent = "Default outfit";
+  outfitMorphSelect.append(defaultOption);
+
+  outfitMorphController.options.forEach((option) => {
+    const optionElement = document.createElement("option");
+    optionElement.value = option.id;
+    optionElement.textContent = option.name;
+    outfitMorphSelect.append(optionElement);
+  });
+
+  outfitMorphSelect.disabled = outfitMorphController.options.length === 0;
+  outfitMorphSelect.title = outfitMorphController.options.length
+    ? `${outfitMorphController.options.length} outfit options`
+    : "No outfit options found";
+  document.documentElement.dataset.outfitMorphCount = String(outfitMorphController.options.length);
+  applyOutfitMorphSelection("default");
 }
 
 function setBlinkWeight(weight) {
@@ -1189,6 +1437,12 @@ function updateLocalModelDebug() {
   const selectedEyeMorph = eyeMorphController.options.find(
     (option) => option.id === eyeMorphController.selectedId
   );
+  const selectedFaceEmote = faceEmoteController.options.find(
+    (option) => option.id === faceEmoteController.selectedId
+  );
+  const selectedOutfitMorph = outfitMorphController.options.find(
+    (option) => option.id === outfitMorphController.selectedId
+  );
 
   Object.assign(window.localModelDebug, {
     mode: modelPreviewOptions.mode,
@@ -1201,7 +1455,9 @@ function updateLocalModelDebug() {
     cameraZoom: modelPreviewOptions.cameraZoom,
     modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
     alphaLayers: alphaLayerStats,
-    eyeMorph: selectedEyeMorph?.name || "Default eyes"
+    eyeMorph: selectedEyeMorph?.name || "Default eyes",
+    faceEmote: selectedFaceEmote?.name || "Default face",
+    outfitMorph: selectedOutfitMorph?.name || "Default outfit"
   });
 }
 
@@ -1627,7 +1883,9 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     realDancer.updateMatrixWorld(true);
   }
   const blinkTargets = configureBlink(realDancer);
-  populateEyeMorphSelect(realDancer);
+  populateEyeMorphSelect(realDancer, activeVrm);
+  populateFaceEmoteSelect(activeVrm);
+  populateOutfitMorphSelect(realDancer);
   scene.add(realDancer);
   dancer.visible = false;
   stage.visible = false;
@@ -1651,6 +1909,10 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     blinkMorphs: blinkTargets.map((target) => target.name),
     eyeMorphs: eyeMorphController.options.map((option) => option.name),
     eyeMorph: "Default eyes",
+    faceEmotes: faceEmoteController.options.map((option) => option.name),
+    faceEmote: "Default face",
+    outfitMorphs: outfitMorphController.options.map((option) => option.name),
+    outfitMorph: "Default outfit",
     position: realDancer.position.toArray(),
     scale: realDancer.scale.toArray(),
     stageLighting: modelPreviewOptions.stageLighting,
@@ -1759,6 +2021,14 @@ modelPresetSelect.addEventListener("change", (event) => {
 
 eyeMorphSelect.addEventListener("change", (event) => {
   applyEyeMorphSelection(event.currentTarget.value);
+});
+
+faceEmoteSelect.addEventListener("change", (event) => {
+  applyFaceEmoteSelection(event.currentTarget.value);
+});
+
+outfitMorphSelect.addEventListener("change", (event) => {
+  applyOutfitMorphSelection(event.currentTarget.value);
 });
 
 stageLightingSlider.addEventListener("input", (event) => {
