@@ -178,6 +178,96 @@ body,
   line-height: 1.12;
 }
 
+.dialogue-console {
+  position: absolute;
+  left: clamp(14px, 3vw, 34px);
+  top: clamp(12px, 2.5vh, 26px);
+  z-index: 4;
+  display: grid;
+  gap: 8px;
+  width: clamp(290px, 42vw, 560px);
+  max-width: calc(100vw - 28px);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-stable);
+  box-shadow:
+    0 0 22px rgb(73 244 255 / 15%),
+    inset 0 0 16px rgb(255 255 255 / 5%);
+  color: white;
+  pointer-events: auto;
+}
+
+.dialogue-history {
+  display: grid;
+  align-content: end;
+  gap: 4px;
+  min-height: 74px;
+  max-height: 126px;
+  overflow: auto;
+  color: rgb(232 254 255 / 92%);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.28;
+}
+
+.dialogue-line {
+  overflow-wrap: anywhere;
+}
+
+.dialogue-line[data-speaker="user"] {
+  color: rgb(255 218 246 / 94%);
+}
+
+.dialogue-line[data-speaker="assistant"] {
+  color: rgb(188 251 255 / 96%);
+}
+
+.dialogue-line[data-speaker="system"] {
+  color: rgb(255 255 255 / 68%);
+}
+
+.dialogue-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px;
+  gap: 8px;
+}
+
+.dialogue-form input,
+.dialogue-form button {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid rgb(146 249 255 / 36%);
+  border-radius: 8px;
+  background: var(--panel-clear);
+  color: white;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dialogue-form input {
+  padding: 0 10px;
+  outline: 0;
+}
+
+.dialogue-form button {
+  padding: 0;
+  text-transform: uppercase;
+}
+
+.dialogue-form input:focus-visible,
+.dialogue-form button:focus-visible {
+  outline: 2px solid var(--cyan-soft);
+  outline-offset: 3px;
+}
+
+.dialogue-form button:disabled {
+  cursor: wait;
+  opacity: 0.56;
+}
+
 @keyframes soda-bubble-flow {
   0% {
     opacity: 0;
@@ -993,6 +1083,10 @@ body,
     display: none;
   }
 
+  .dialogue-console {
+    width: min(52vw, 430px);
+  }
+
   .speech-bubble {
     width: clamp(156px, 36vw, 226px);
     min-height: clamp(74px, 18vw, 108px);
@@ -1018,6 +1112,21 @@ body,
   .preview-panel {
     width: min(63vw, 226px);
     padding: 8px;
+  }
+
+  .dialogue-console {
+    left: 12px;
+    width: calc(100vw - 24px);
+  }
+
+  .dialogue-history {
+    min-height: 62px;
+    max-height: 94px;
+    font-size: 10px;
+  }
+
+  .dialogue-form {
+    grid-template-columns: minmax(0, 1fr) 58px;
   }
 
   .parameter-control,

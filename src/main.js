@@ -26,6 +26,9 @@ const motionModeSelect = document.querySelector("#motionModeSelect");
 const speechPhraseSelect = document.querySelector("#speechPhraseSelect");
 const speechBubble = document.querySelector("#speechBubble");
 const speechText = document.querySelector("#speechText");
+const dialogueHistory = document.querySelector("#dialogueHistory");
+const dialogueForm = document.querySelector("#dialogueForm");
+const dialogueInput = document.querySelector("#dialogueInput");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
@@ -58,6 +61,12 @@ const TEST_SPEECH_PHRASES = [
   "Tiny!",
   "Someday I will answer with Ollama, but today I am just practicing my stage banter."
 ];
+const OLLAMA_MODEL = "llama3.2:1b";
+const COMPANION_SYSTEM_PROMPT =
+  "You are a warm, concise desktop companion. Reply in one or two short sentences.";
+const DOUBLE_READING_RATE_MS_PER_WORD = 150;
+const MIN_SPEECH_VISIBLE_MS = 1800;
+const MAX_SPEECH_VISIBLE_MS = 9000;
 
 const SATURATION_SHADER = {
   uniforms: {
@@ -173,6 +182,13 @@ const motionController = {
   status: "idle",
   error: "",
   configured: false
+};
+const dialogueController = {
+  messages: [],
+  pending: false
+};
+const speechController = {
+  visibleUntil: 0
 };
 
 const scene = new THREE.Scene();
@@ -747,14 +763,125 @@ function getSpeechFontSize(phrase) {
   return 23;
 }
 
+function getSpeechVisibleDuration(phrase) {
+  const wordCount = phrase.trim().split(/\s+/).filter(Boolean).length;
+  return THREE.MathUtils.clamp(
+    wordCount * DOUBLE_READING_RATE_MS_PER_WORD + 900,
+    MIN_SPEECH_VISIBLE_MS,
+    MAX_SPEECH_VISIBLE_MS
+  );
+}
+
+function showSpeechPhrase(phrase) {
+  const spokenPhrase = phrase.trim() || TEST_SPEECH_PHRASES[0];
+  speechText.textContent = spokenPhrase;
+  speechBubble.style.setProperty("--speech-font-size", `${getSpeechFontSize(spokenPhrase)}px`);
+  speechBubble.dataset.length = spokenPhrase.length > 58 ? "long" : "normal";
+  speechController.visibleUntil = performance.now() + getSpeechVisibleDuration(spokenPhrase);
+}
+
 function setSpeechPhrase(phrase) {
   const selectedPhrase = TEST_SPEECH_PHRASES.includes(phrase)
     ? phrase
     : TEST_SPEECH_PHRASES[0];
-  speechText.textContent = selectedPhrase;
-  speechBubble.style.setProperty("--speech-font-size", `${getSpeechFontSize(selectedPhrase)}px`);
-  speechBubble.dataset.length = selectedPhrase.length > 58 ? "long" : "normal";
+  showSpeechPhrase(selectedPhrase);
   speechPhraseSelect.value = selectedPhrase;
+}
+
+function renderDialogueHistory() {
+  dialogueHistory.innerHTML = "";
+  dialogueController.messages.forEach((message) => {
+    const line = document.createElement("div");
+    line.className = "dialogue-line";
+    line.dataset.speaker = message.role;
+    const prefix = {
+      user: ">",
+      assistant: "<",
+      system: "#"
+    }[message.role] || "#";
+    line.textContent = `${prefix} ${message.content}`;
+    dialogueHistory.append(line);
+  });
+  dialogueHistory.scrollTop = dialogueHistory.scrollHeight;
+}
+
+function addDialogueLine(role, content) {
+  dialogueController.messages.push({ role, content });
+  renderDialogueHistory();
+}
+
+function getOllamaMessages() {
+  const conversation = dialogueController.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .slice(-8);
+  return [
+    { role: "system", content: COMPANION_SYSTEM_PROMPT },
+    ...conversation
+  ];
+}
+
+function cleanCompanionReply(reply) {
+  return reply.trim().replace(/^["“](.*)["”]$/s, "$1").trim();
+}
+
+async function requestOllamaReply() {
+  const response = await fetch("/ollama-chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: getOllamaMessages()
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Ollama returned ${response.status}`);
+  }
+
+  return payload.message || "";
+}
+
+async function submitDialoguePrompt(prompt) {
+  if (dialogueController.pending) {
+    return;
+  }
+
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    return;
+  }
+
+  dialogueController.pending = true;
+  dialogueInput.value = "";
+  dialogueInput.disabled = true;
+  dialogueForm.querySelector("button").disabled = true;
+  addDialogueLine("user", trimmedPrompt);
+  addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
+
+  try {
+    const reply = cleanCompanionReply(await requestOllamaReply());
+    dialogueController.messages = dialogueController.messages.filter(
+      (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
+    );
+    addDialogueLine("assistant", reply || "I am here.");
+    showSpeechPhrase(reply || "I am here.");
+  } catch (error) {
+    dialogueController.messages = dialogueController.messages.filter(
+      (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
+    );
+    addDialogueLine(
+      "system",
+      error instanceof Error ? error.message : "Ollama is unavailable"
+    );
+  } finally {
+    dialogueController.pending = false;
+    dialogueInput.disabled = false;
+    dialogueForm.querySelector("button").disabled = false;
+    dialogueInput.focus();
+  }
 }
 
 function getSpeechAnchorPosition() {
@@ -792,7 +919,8 @@ function updateSpeechBubblePosition() {
   speechAnchor.copy(anchor);
   speechScreenPosition.copy(speechAnchor).project(camera);
   const outsideClipSpace = speechScreenPosition.z < -1 || speechScreenPosition.z > 1;
-  speechBubble.dataset.visible = outsideClipSpace ? "false" : "true";
+  const speechIsActive = performance.now() < speechController.visibleUntil;
+  speechBubble.dataset.visible = !outsideClipSpace && speechIsActive ? "true" : "false";
 
   if (outsideClipSpace) {
     return;
@@ -1987,6 +2115,19 @@ function syncMmdTextureDepthMode(material) {
   return true;
 }
 
+function applyVrmMaterialDepthMode(material) {
+  if (material.transparent || material.opacity < 1) {
+    material.transparent = true;
+    material.depthWrite = false;
+    return;
+  }
+
+  if (material.alphaTest > 0) {
+    material.transparent = false;
+    material.depthWrite = true;
+  }
+}
+
 function queueTextureDepthModeSync(material) {
   if (!material?.map || textureDepthModeCallbackMaterials.has(material)) {
     return;
@@ -2218,7 +2359,9 @@ function setModelMaterials(mesh, kind = activeModelKind) {
       if (kind === "pmx" || kind === "pmd") {
         queueTextureDepthModeSync(material);
       }
-      if (!syncedMmdDepth) {
+      if (kind === "vrm") {
+        applyVrmMaterialDepthMode(material);
+      } else if (!syncedMmdDepth) {
         material.transparent = material.opacity < 1;
         material.depthWrite = material.opacity >= 1;
       }
@@ -2413,6 +2556,11 @@ speechPhraseSelect.addEventListener("change", (event) => {
   setSpeechPhrase(event.currentTarget.value);
 });
 
+dialogueForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitDialoguePrompt(dialogueInput.value);
+});
+
 stageLightingSlider.addEventListener("input", (event) => {
   setStageLighting(event.currentTarget.value);
 });
@@ -2438,6 +2586,7 @@ previewOptionButtons.forEach((button) => {
 pruneDeprecatedPreviewUrlParams();
 populateSpeechPhraseSelect();
 setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
+addDialogueLine("system", `${OLLAMA_MODEL} ready`);
 updatePreviewControls();
 
 canvas.addEventListener("pointerdown", (event) => {

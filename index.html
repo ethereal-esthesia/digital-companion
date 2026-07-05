@@ -18,6 +18,13 @@
         </span>
         <p id="speechText">Ready when you are.</p>
       </div>
+      <section class="dialogue-console" aria-label="Companion dialogue">
+        <div class="dialogue-history" id="dialogueHistory" aria-live="polite"></div>
+        <form class="dialogue-form" id="dialogueForm">
+          <input id="dialogueInput" type="text" autocomplete="off" aria-label="Message companion" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
       <div class="hud" aria-hidden="false">
         <div class="track">
           <span>GETCHA</span>

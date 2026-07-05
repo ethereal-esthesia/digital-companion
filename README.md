@@ -31,6 +31,8 @@ Current features include:
 - Bloom, saturation and post-processing controls
 - Local resource configuration
 - Model presets
+- Auto-discovered local model folders
+- Basic local Ollama dialogue
 
 No networking or AI interaction is implemented yet.
 
@@ -63,6 +65,14 @@ Characters should eventually be able to:
 Models, animations, motions and textures are loaded from the local `resources/` directory.
 
 Eventually any compatible assets placed into the resource folders should become available automatically without modifying application code.
+
+For quick model testing, place one model folder per character under:
+
+```text
+local-resources/original-video-assets/model/vrm-samples/
+```
+
+On dev server start, each immediate child folder with a `.vrm`, `.pmx`, or `.pmd` file is added to the model dropdown using the folder name as its label.
 
 Planned supported formats include:
 
@@ -101,6 +111,16 @@ npm run dev
 ```
 
 Then open the local development URL shown by Vite.
+
+### Local companion chat
+
+The prototype can talk to a local Ollama server through the dev server bridge. The default lightweight model is:
+
+```bash
+ollama pull llama3.2:1b
+```
+
+Start Ollama, run the app, and use the dialogue console at the top of the scene.
 
 ---
 

@@ -1,5 +1,6 @@
 const DEFAULT_CONFIG_URL = "/local-resources/original-video-assets/config.json";
 const FALLBACK_CONFIG_URL = "/resources/original-video-assets/config.example.json";
+const DISCOVERED_MODEL_PRESETS_URL = "/local-model-presets.json";
 
 const ASSET_ORDER = ["model", "stage", "motion", "camera", "facial", "audio"];
 const MODEL_PRESET_QUERY_KEY = "modelPreset";
@@ -32,6 +33,15 @@ async function fetchJson(url) {
     throw new Error(`Config returned ${response.status}`);
   }
   return response.json();
+}
+
+async function fetchDiscoveredModelPresets() {
+  try {
+    const discovered = await fetchJson(DISCOVERED_MODEL_PRESETS_URL);
+    return Array.isArray(discovered.modelPresets) ? discovered.modelPresets : [];
+  } catch {
+    return [];
+  }
 }
 
 async function probeAsset(url) {
@@ -90,24 +100,69 @@ function normalizeAssetEntry(name, entry, root) {
   };
 }
 
-function normalizeModelPresets(scene, root) {
+function normalizeModelPresets(scene, root, discoveredPresets = []) {
   const assets = scene?.assets || {};
   const configuredPresets = Array.isArray(scene?.modelPresets) ? scene.modelPresets : [];
+  const usedIds = new Set();
+  const usedPaths = new Set();
 
   if (configuredPresets.length > 0) {
-    return configuredPresets.map((preset, index) => {
+    const normalizedConfigured = configuredPresets.map((preset, index) => {
       const normalized = normalizeAssetEntry("model", preset, root);
+      const presetId = preset.id || `model-${index + 1}`;
+      usedIds.add(presetId);
+      usedPaths.add(normalized.path);
       return {
         ...normalized,
-        id: preset.id || `model-${index + 1}`,
+        id: presetId,
         label: preset.label || preset.name || normalized.label || `Model ${index + 1}`,
         sourceId: preset.sourceId || null,
         required: preset.required !== undefined ? Boolean(preset.required) : index === 0
       };
     });
+
+    const normalizedDiscovered = discoveredPresets
+      .filter((preset) => preset?.path && !usedPaths.has(preset.path))
+      .map((preset, index) => {
+        const normalized = normalizeAssetEntry("model", preset, root);
+        const fallbackId = `local-model-${index + 1}`;
+        const baseId = preset.id || fallbackId;
+        const id = usedIds.has(baseId) ? `${baseId}-${index + 1}` : baseId;
+        usedIds.add(id);
+        usedPaths.add(normalized.path);
+        return {
+          ...normalized,
+          id,
+          label: preset.label || preset.name || normalized.label || id,
+          sourceId: preset.sourceId || "local-model-folder",
+          required: false
+        };
+      });
+
+    return [...normalizedConfigured, ...normalizedDiscovered];
   }
 
   const fallbackModel = normalizeAssetEntry("model", assets.model, root);
+  usedIds.add("default");
+  usedPaths.add(fallbackModel.path);
+  const normalizedDiscovered = discoveredPresets
+    .filter((preset) => preset?.path && !usedPaths.has(preset.path))
+    .map((preset, index) => {
+      const normalized = normalizeAssetEntry("model", preset, root);
+      const fallbackId = `local-model-${index + 1}`;
+      const baseId = preset.id || fallbackId;
+      const id = usedIds.has(baseId) ? `${baseId}-${index + 1}` : baseId;
+      usedIds.add(id);
+      usedPaths.add(normalized.path);
+      return {
+        ...normalized,
+        id,
+        label: preset.label || preset.name || normalized.label || id,
+        sourceId: preset.sourceId || "local-model-folder",
+        required: false
+      };
+    });
+
   return [
     {
       ...fallbackModel,
@@ -115,7 +170,8 @@ function normalizeModelPresets(scene, root) {
       label: fallbackModel.label || "Configured model",
       sourceId: null,
       required: fallbackModel.required
-    }
+    },
+    ...normalizedDiscovered
   ];
 }
 
@@ -211,7 +267,8 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
 
   const scene = pickScene(config);
   const root = config.assetRoot || "/local-resources/original-video-assets/";
-  const modelPresets = normalizeModelPresets(scene, root);
+  const discoveredModelPresets = await fetchDiscoveredModelPresets();
+  const modelPresets = normalizeModelPresets(scene, root, discoveredModelPresets);
   const motionPresets = normalizeMotionPresets(scene, root);
   const requestedModelPreset = pickModelPreset(scene, modelPresets);
   const modelPresetResults = await Promise.all(

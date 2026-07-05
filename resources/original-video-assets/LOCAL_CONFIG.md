@@ -36,4 +36,12 @@ Use [config.example.json](config.example.json) as the tracked template. The loca
 
 `assets.model` remains supported for old configs. When `modelPresets` is present, the selected preset is loaded instead; change it with `?modelPreset=some-id` or the in-app model dropdown.
 
+## Auto-discovered model folders
+
+For quick local model testing, create one folder per character under:
+
+`local-resources/original-video-assets/model/vrm-samples/`
+
+Each immediate child folder should contain a `.vrm`, `.pmx`, or `.pmd` file somewhere inside it. When the Vite dev or preview server starts, those folders are exposed at `/local-model-presets.json` and merged into the model dropdown. The folder name becomes the dropdown label.
+
 For WebKit packaging, the wrapper should grant read access to this folder or rewrite `assetRoot` to a wrapper-provided local URL.
