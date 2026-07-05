@@ -34,3 +34,42 @@ apr's online terms require credits for:
 ## Project Impact
 
 The current app is a Three.js web app. Loading this VMD directly in-browser is not clearly allowed by the "MMD and MMD-derived tools only" restriction. Do not wire real motion files into the web app until we have permission or a safer MMD/Blender-derived workflow.
+
+---
+
+Asset: `VRMA MotionPack`
+
+Creator: `pixiv Inc.'s VRoid Project`
+
+Status: usable for local app playback; keep files local-only unless redistribution is clearly permitted.
+
+## Sources Checked
+
+- BOOTH product page: https://booth.pm/items/5512385
+- Bundled readmes: `Readme_VRMA_MotionPack_EN.txt`, `Readme_VRMA_MotionPack_JP.txt`
+
+## Included Motions
+
+- `VRMA_01.vrma`: Show full body
+- `VRMA_02.vrma`: Greeting
+- `VRMA_03.vrma`: Peace sign
+- `VRMA_04.vrma`: Shoot
+- `VRMA_05.vrma`: Spin
+- `VRMA_06.vrma`: Model pose
+- `VRMA_07.vrma`: Squat
+
+## Required Credits
+
+For commercial use, credit pixiv Inc.'s VRoid Project using the product page or bundled readme credit phrase.
+
+## Restrictions To Respect
+
+- Do not distribute the motion files or modified versions in a riggable or extractable form without permission.
+- Do not use for specific religious or political purposes.
+- Do not use in ways intended to seriously denigrate a third party.
+- Do not use for illegal activity, rights infringement, sexual content, or significantly violent content.
+- Terms may change, and distribution may be updated or suspended without notice.
+
+## Project Impact
+
+The app can load these `.vrma` files from `local-resources/original-video-assets/motion/vroid-project-vrma/`, which is ignored by git. Do not commit or bundle the extracted motion files into the public repo/app distribution without a separate redistribution review.

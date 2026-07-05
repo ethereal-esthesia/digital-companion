@@ -6,6 +6,11 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import {
+  VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
+  createVRMAnimationClip
+} from "@pixiv/three-vrm-animation";
 import { MMDLoader } from "three-stdlib";
 import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 
@@ -72,14 +77,14 @@ const SATURATION_SHADER = {
 
 const MODEL_MODE_CHOICES = ["textured", "clay"];
 const MODEL_LIGHTING_CHOICES = ["native", "enhanced"];
-const MODEL_MOTION_CHOICES = ["still", "idle", "beat", "dance", "pose"];
-const MODEL_MOTION_LABELS = new Map([
-  ["still", "Still"],
-  ["idle", "Idle"],
-  ["beat", "Beat sway"],
-  ["dance", "Dance test"],
-  ["pose", "Pose loop"]
-]);
+const STILL_MOTION_ID = "still";
+const STILL_MOTION_OPTION = {
+  id: STILL_MOTION_ID,
+  label: "Still",
+  kind: "still",
+  url: "",
+  ok: true
+};
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
@@ -147,10 +152,16 @@ const outfitMorphController = {
 };
 
 let modelPreviewOptions = { ...DEFAULT_MODEL_PREVIEW_OPTIONS };
-const motionEuler = new THREE.Euler(0, 0, 0, "XYZ");
-const motionQuaternion = new THREE.Quaternion();
 const motionController = {
-  lastMode: "still"
+  options: [STILL_MOTION_OPTION],
+  mixer: null,
+  action: null,
+  clip: null,
+  clipCache: new Map(),
+  loadingId: null,
+  status: "idle",
+  error: "",
+  configured: false
 };
 
 const scene = new THREE.Scene();
@@ -737,130 +748,195 @@ function animateDancer(t) {
 }
 
 function getMotionModeLabel(mode) {
-  return MODEL_MOTION_LABELS.get(mode) || mode;
+  return getMotionModeOption(mode).label;
 }
 
-function makeMotionTransform(x = 0, y = 0, z = 0, position = null) {
-  motionEuler.set(x, y, z, "XYZ");
-  const transform = {
-    rotation: motionQuaternion.setFromEuler(motionEuler).toArray()
-  };
-  if (position) {
-    transform.position = position;
-  }
-  return transform;
+function getMotionModeOption(mode) {
+  return motionController.options.find((option) => option.id === mode) || STILL_MOTION_OPTION;
 }
 
-function buildProceduralVrmPose(mode, t) {
-  if (mode === "idle") {
-    const breath = Math.sin(t * 1.55);
-    const sway = Math.sin(t * 0.72);
-    return {
-      hips: makeMotionTransform(0, sway * 0.018, sway * 0.026, [
-        sway * 0.004,
-        Math.max(0, breath) * 0.006,
-        0
-      ]),
-      spine: makeMotionTransform(breath * 0.018, 0, -sway * 0.026),
-      chest: makeMotionTransform(breath * 0.024, sway * 0.018, sway * 0.018),
-      neck: makeMotionTransform(-breath * 0.01, -sway * 0.018, -sway * 0.008),
-      head: makeMotionTransform(-breath * 0.012, sway * 0.035, sway * 0.018),
-      leftUpperArm: makeMotionTransform(0.045 + breath * 0.015, 0.025, -0.08 + sway * 0.018),
-      rightUpperArm: makeMotionTransform(0.045 + breath * 0.015, -0.025, 0.08 + sway * 0.018)
-    };
-  }
-
-  if (mode === "beat") {
-    const beat = Math.sin(t * 3.2);
-    const pulse = Math.max(0, beat);
-    const sway = Math.sin(t * 1.6);
-    const quick = Math.sin(t * 6.4);
-    return {
-      hips: makeMotionTransform(pulse * 0.035, sway * 0.055, sway * 0.1, [
-        sway * 0.012,
-        pulse * 0.016,
-        0
-      ]),
-      spine: makeMotionTransform(-pulse * 0.035, -sway * 0.032, -sway * 0.07),
-      chest: makeMotionTransform(pulse * 0.04, sway * 0.04, sway * 0.06),
-      neck: makeMotionTransform(0, -sway * 0.035, -quick * 0.018),
-      head: makeMotionTransform(-pulse * 0.028, sway * 0.065, quick * 0.025),
-      leftUpperArm: makeMotionTransform(0.1 + pulse * 0.08, 0.04, -0.24 + quick * 0.045),
-      leftLowerArm: makeMotionTransform(-0.16 - pulse * 0.08, 0, 0.04),
-      rightUpperArm: makeMotionTransform(0.1 + pulse * 0.08, -0.04, 0.24 + quick * 0.045),
-      rightLowerArm: makeMotionTransform(-0.16 - pulse * 0.08, 0, -0.04)
-    };
-  }
-
-  if (mode === "dance") {
-    const beat = Math.sin(t * 3.8);
-    const side = Math.sin(t * 1.9);
-    const cross = Math.sin(t * 3.8 + Math.PI / 2);
-    const step = Math.max(0, Math.sin(t * 3.8));
-    const backStep = Math.max(0, -Math.sin(t * 3.8));
-    return {
-      hips: makeMotionTransform(0.02 + step * 0.035, side * 0.08, side * 0.14, [
-        side * 0.02,
-        Math.abs(beat) * 0.018,
-        0
-      ]),
-      spine: makeMotionTransform(-0.04 - step * 0.03, -side * 0.045, -side * 0.1),
-      chest: makeMotionTransform(0.05 + step * 0.035, side * 0.055, side * 0.085),
-      neck: makeMotionTransform(-0.02, -side * 0.035, -cross * 0.025),
-      head: makeMotionTransform(-0.04, side * 0.08, cross * 0.04),
-      leftUpperLeg: makeMotionTransform(0.06 + step * 0.08, 0.015, -0.035 + side * 0.02),
-      leftLowerLeg: makeMotionTransform(-0.08 - step * 0.11, 0, 0),
-      rightUpperLeg: makeMotionTransform(0.06 + backStep * 0.08, -0.015, 0.035 + side * 0.02),
-      rightLowerLeg: makeMotionTransform(-0.08 - backStep * 0.11, 0, 0),
-      leftUpperArm: makeMotionTransform(0.16 + backStep * 0.16, 0.06, -0.42 + side * 0.08),
-      leftLowerArm: makeMotionTransform(-0.24 - backStep * 0.15, 0, 0.08),
-      rightUpperArm: makeMotionTransform(0.16 + step * 0.16, -0.06, 0.42 + side * 0.08),
-      rightLowerArm: makeMotionTransform(-0.24 - step * 0.15, 0, -0.08)
-    };
-  }
-
-  if (mode === "pose") {
-    const phase = Math.sin(t * 1.05);
-    const lift = (Math.sin(t * 2.1) + 1) * 0.5;
-    const turn = Math.sin(t * 0.55);
-    return {
-      hips: makeMotionTransform(0.02, turn * 0.075, phase * 0.08, [phase * 0.012, lift * 0.012, 0]),
-      spine: makeMotionTransform(-0.03, -turn * 0.045, -phase * 0.08),
-      chest: makeMotionTransform(0.045, turn * 0.055, phase * 0.07),
-      neck: makeMotionTransform(-0.018, -turn * 0.045, -phase * 0.025),
-      head: makeMotionTransform(-0.035, turn * 0.09, phase * 0.045),
-      leftUpperArm: makeMotionTransform(0.18 + lift * 0.16, 0.1, -0.58 + phase * 0.08),
-      leftLowerArm: makeMotionTransform(-0.36 - lift * 0.18, 0.02, 0.12),
-      rightUpperArm: makeMotionTransform(0.18 + (1 - lift) * 0.16, -0.1, 0.58 + phase * 0.08),
-      rightLowerArm: makeMotionTransform(-0.36 - (1 - lift) * 0.18, -0.02, -0.12)
-    };
-  }
-
-  return null;
+function getMotionModeChoices() {
+  return motionController.options.map((option) => option.id);
 }
 
-function resetLoadedModelMotion() {
+function pickMotionChoice(value) {
+  return getMotionModeChoices().includes(value) ? value : STILL_MOTION_ID;
+}
+
+function isReadyVrmaMotionPreset(preset) {
+  return preset?.ok && preset.url && (preset.kind || "vrma").toLowerCase() === "vrma";
+}
+
+function configureMotionOptions(state) {
+  const configured = state?.scene?.modelPreview || {};
+  const vrmaOptions = (state?.motionPresets || [])
+    .filter(isReadyVrmaMotionPreset)
+    .map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      kind: "vrma",
+      url: preset.url,
+      path: preset.path,
+      sourceId: preset.sourceId,
+      ok: true
+    }));
+
+  motionController.options = [STILL_MOTION_OPTION, ...vrmaOptions];
+  motionController.configured = true;
+  modelPreviewOptions.motion = pickFirstChoice(
+    [queryParams.get("modelMotion"), configured.motion, configured.modelMotion],
+    getMotionModeChoices(),
+    DEFAULT_MODEL_PREVIEW_OPTIONS.motion
+  );
+  populateMotionModeSelect();
+}
+
+function populateMotionModeSelect() {
+  const selectedMotion = pickMotionChoice(modelPreviewOptions.motion);
+  motionModeSelect.innerHTML = "";
+
+  motionController.options.forEach((motion) => {
+    const option = document.createElement("option");
+    option.value = motion.id;
+    option.textContent = motion.label;
+    option.selected = motion.id === selectedMotion;
+    motionModeSelect.append(option);
+  });
+
+  motionModeSelect.value = selectedMotion;
+  motionModeSelect.disabled =
+    motionController.options.length <= 1 || (realDancer && activeModelKind !== "vrm");
+}
+
+function restoreManualExpressionSelections() {
+  activeVrm?.expressionManager?.resetValues?.();
+  applyEyeMorphSelection();
+  applyFaceEmoteSelection();
+  applyOutfitMorphSelection();
+}
+
+function resetLoadedModelMotion({ resetExpressions = true } = {}) {
+  motionController.loadingId = null;
+
+  if (motionController.action) {
+    motionController.action.stop();
+    motionController.action = null;
+  }
+
+  if (motionController.mixer && activeVrm?.scene) {
+    motionController.mixer.stopAllAction();
+    motionController.mixer.uncacheRoot(activeVrm.scene);
+  }
+
+  motionController.mixer = null;
+  motionController.clip = null;
+  motionController.status = "idle";
+  motionController.error = "";
   activeVrm?.humanoid?.resetNormalizedPose?.();
-  motionController.lastMode = "still";
+
+  if (resetExpressions) {
+    restoreManualExpressionSelections();
+  }
 }
 
-function updateLoadedModelMotion(t) {
-  const mode = modelPreviewOptions.motion;
-  if (!activeVrm?.humanoid || mode === "still") {
-    if (motionController.lastMode !== "still") {
-      resetLoadedModelMotion();
+function ensureVrmLookAtQuaternionProxy(vrm) {
+  if (!vrm?.lookAt || !vrm.scene) {
+    return;
+  }
+
+  let proxy = vrm.scene.children.find((child) => child instanceof VRMLookAtQuaternionProxy);
+  if (!proxy) {
+    proxy = new VRMLookAtQuaternionProxy(vrm.lookAt);
+    vrm.scene.add(proxy);
+  }
+  if (!proxy.name) {
+    proxy.name = "VRMLookAtQuaternionProxy";
+  }
+}
+
+function loadVrmAnimationClip(option) {
+  const cacheKey = `${activeVrm?.scene?.uuid || "none"}:${option.id}`;
+  const cached = motionController.clipCache.get(cacheKey);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      option.url,
+      (gltf) => {
+        const vrmAnimation = gltf.userData.vrmAnimations?.[0];
+        if (!vrmAnimation) {
+          reject(new Error(`No VRM animation found in ${option.label}`));
+          return;
+        }
+
+        ensureVrmLookAtQuaternionProxy(activeVrm);
+        const clip = createVRMAnimationClip(vrmAnimation, activeVrm);
+        clip.name = option.label;
+        motionController.clipCache.set(cacheKey, clip);
+        resolve(clip);
+      },
+      undefined,
+      reject
+    );
+  });
+}
+
+async function applyLoadedModelMotion() {
+  const option = getMotionModeOption(modelPreviewOptions.motion);
+  resetLoadedModelMotion();
+
+  if (option.id === STILL_MOTION_ID || !activeVrm?.scene) {
+    refreshModelPreview();
+    return;
+  }
+
+  motionController.status = "loading";
+  motionController.error = "";
+  const loadingId = `${option.id}:${performance.now()}`;
+  motionController.loadingId = loadingId;
+  updateLocalModelDebug();
+  updateModelAssetStatus();
+
+  try {
+    const clip = await loadVrmAnimationClip(option);
+    if (motionController.loadingId !== loadingId || modelPreviewOptions.motion !== option.id) {
+      return;
     }
-    return;
-  }
 
-  const pose = buildProceduralVrmPose(mode, t);
-  if (!pose) {
+    activeVrm.humanoid?.resetNormalizedPose?.();
+    motionController.mixer = new THREE.AnimationMixer(activeVrm.scene);
+    motionController.clip = clip;
+    motionController.action = motionController.mixer.clipAction(clip);
+    motionController.action.reset();
+    motionController.action.setLoop(THREE.LoopRepeat, Infinity);
+    motionController.action.play();
+    motionController.status = "playing";
+    motionController.error = "";
+  } catch (error) {
+    if (motionController.loadingId !== loadingId) {
+      return;
+    }
+    motionController.status = "error";
+    motionController.error = error instanceof Error ? error.message : "Motion failed to load";
+    console.warn(motionController.error);
+    modelPreviewOptions.motion = STILL_MOTION_ID;
+    setPreviewUrlParam("motion", STILL_MOTION_ID);
     resetLoadedModelMotion();
-    return;
+  } finally {
+    if (motionController.loadingId === loadingId) {
+      motionController.loadingId = null;
+    }
+    refreshModelPreview();
   }
+}
 
-  activeVrm.humanoid.setNormalizedPose(pose);
-  motionController.lastMode = mode;
+function updateLoadedModelMotion(delta) {
+  motionController.mixer?.update(delta);
 }
 
 function animateStage(t) {
@@ -964,6 +1040,10 @@ function pickChoice(value, choices, fallback) {
   return choices.includes(value) ? value : fallback;
 }
 
+function pickFirstChoice(values, choices, fallback) {
+  return values.find((value) => choices.includes(value)) || fallback;
+}
+
 function getModelPreviewOptions(sceneConfig) {
   const configured = sceneConfig?.modelPreview || {};
   const mode = pickChoice(
@@ -976,9 +1056,9 @@ function getModelPreviewOptions(sceneConfig) {
     MODEL_LIGHTING_CHOICES,
     DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
   );
-  const motion = pickChoice(
-    queryParams.get("modelMotion") || configured.motion || configured.modelMotion,
-    MODEL_MOTION_CHOICES,
+  const motion = pickFirstChoice(
+    [queryParams.get("modelMotion"), configured.motion, configured.modelMotion],
+    getMotionModeChoices(),
     DEFAULT_MODEL_PREVIEW_OPTIONS.motion
   );
   const stageLighting = parseUnitInterval(
@@ -1527,6 +1607,8 @@ function pruneDeprecatedPreviewUrlParams() {
 }
 
 function updatePreviewControls() {
+  populateMotionModeSelect();
+
   const amount = THREE.MathUtils.clamp(modelPreviewOptions.stageLighting, 0, 1);
   const stageLabel = `Stage lighting ${Math.round(amount * 100)}%`;
   stageLightingSlider.value = amount.toFixed(2);
@@ -1571,6 +1653,16 @@ function updatePreviewControls() {
   );
   document.documentElement.dataset.modelMotion = modelPreviewOptions.motion;
 
+  const requestedMotion = queryParams.get(PREVIEW_QUERY_KEYS.motion);
+  if (
+    motionController.configured &&
+    requestedMotion &&
+    requestedMotion !== modelPreviewOptions.motion &&
+    !getMotionModeChoices().includes(requestedMotion)
+  ) {
+    setPreviewUrlParam("motion", modelPreviewOptions.motion);
+  }
+
   previewOptionButtons.forEach((button) => {
     const group = button.dataset.optionGroup;
     const active = modelPreviewOptions[group] === button.dataset.optionValue;
@@ -1608,6 +1700,10 @@ function updateLocalModelDebug() {
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
     motion: modelPreviewOptions.motion,
+    motionOptions: motionController.options.map((option) => option.label),
+    motionStatus: motionController.status,
+    motionError: motionController.error,
+    motionClipDuration: motionController.clip?.duration || 0,
     modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
     alphaLayers: alphaLayerStats,
     eyeMorph: selectedEyeMorph?.name || "Default eyes",
@@ -1692,15 +1788,13 @@ function setCameraZoom(value, syncUrl = true) {
 }
 
 function setMotionMode(value, syncUrl = true) {
-  const motion = pickChoice(value, MODEL_MOTION_CHOICES, DEFAULT_MODEL_PREVIEW_OPTIONS.motion);
+  const motion = pickMotionChoice(value);
   modelPreviewOptions.motion = motion;
   if (syncUrl) {
     setPreviewUrlParam("motion", motion);
   }
-  if (motion === "still") {
-    resetLoadedModelMotion();
-  }
   refreshModelPreview();
+  applyLoadedModelMotion();
 }
 
 function setModelPreset(id) {
@@ -2040,6 +2134,7 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
   realDancer = mesh;
   activeVrm = vrm;
   activeModelKind = kind;
+  motionController.clipCache.clear();
   window.localModel = realDancer;
   window.localVrm = activeVrm;
   realDancer.name = modelAsset.label || `Local ${getModelFormatLabel(kind)} model`;
@@ -2049,7 +2144,6 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     realDancer.rotation.y = Math.PI;
     realDancer.updateMatrixWorld(true);
   }
-  motionController.lastMode = "still";
   const blinkTargets = configureBlink(realDancer);
   populateEyeMorphSelect(realDancer, activeVrm);
   populateFaceEmoteSelect(activeVrm);
@@ -2085,10 +2179,13 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     scale: realDancer.scale.toArray(),
     stageLighting: modelPreviewOptions.stageLighting,
     motion: modelPreviewOptions.motion,
+    motionOptions: motionController.options.map((option) => option.label),
+    motionStatus: motionController.status,
     visible: realDancer.visible,
     vrmMeta: activeVrm?.meta || null
   };
   updateLocalModelDebug();
+  applyLoadedModelMotion();
   return realDancer;
 }
 
@@ -2147,6 +2244,7 @@ function loadConfiguredModel(state) {
 function render() {
   requestAnimationFrame(render);
   const delta = clock.getDelta();
+  const animationDelta = playing ? delta : 0;
   if (playing) {
     elapsed += delta;
   }
@@ -2154,9 +2252,9 @@ function render() {
     animateDancer(elapsed);
     animateStage(elapsed);
   } else {
-    updateLoadedModelMotion(elapsed);
-    activeVrm?.update?.(delta);
-    updateBlink(delta);
+    updateLoadedModelMotion(animationDelta);
+    activeVrm?.update?.(animationDelta);
+    updateBlink(animationDelta);
     applyModelPreviewLighting();
   }
   updateCamera(elapsed);
@@ -2282,6 +2380,7 @@ loadLocalAssetConfig()
   .then((state) => {
     localAssetState = state;
     window.localAssetState = state;
+    configureMotionOptions(state);
     populateModelPresetSelect(state);
     renderAssetStatus(state, assetStatus);
     return loadConfiguredModel(state);

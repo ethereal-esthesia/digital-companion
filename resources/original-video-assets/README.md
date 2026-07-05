@@ -36,7 +36,7 @@ Start with [LICENSE_AUDIT.md](LICENSE_AUDIT.md) before downloading or importing 
 
 - `model/`: notes for Miku model files such as `.pmx`, `.pmd`, textures, and model readmes.
 - `stage/`: notes for HZ-D stage model, textures, and stage readmes.
-- `motion/`: notes for dance motion files, usually `.vmd`.
+- `motion/`: notes for dance motion files, usually `.vmd` or `.vrma`.
 - `camera/`: notes for camera motion files, usually `.vmd`.
 - `facial/`: notes for facial/lip motion files, usually `.vmd`.
 - `music/`: notes for audio references or local working audio files.

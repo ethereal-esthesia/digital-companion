@@ -38,12 +38,64 @@
       "modelPreview": {
         "mode": "textured",
         "lighting": "native",
+        "motion": "vroid-greeting",
         "stageLighting": 0,
         "materialBoostStrength": 0,
         "saturation": 1,
         "bloomStrength": 0.02,
         "cameraZoom": 1
       },
+      "motionPresets": [
+        {
+          "id": "vroid-show-full-body",
+          "label": "Show full body",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_01.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-greeting",
+          "label": "Greeting",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_02.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-peace-sign",
+          "label": "Peace sign",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_03.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-shoot",
+          "label": "Shoot",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_04.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-spin",
+          "label": "Spin",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_05.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-model-pose",
+          "label": "Model pose",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_06.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        },
+        {
+          "id": "vroid-squat",
+          "label": "Squat",
+          "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_07.vrma",
+          "kind": "vrma",
+          "sourceId": "vroid-project-vrma-motion-pack"
+        }
+      ],
       "assets": {
         "model": {
           "path": "model/put-model-here.pmx",

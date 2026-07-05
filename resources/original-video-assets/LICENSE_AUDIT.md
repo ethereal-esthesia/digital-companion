@@ -14,6 +14,7 @@ This is a working rights/usage audit for the assets credited by the source video
 | Model preset: `Sameko Saba 3D Model` | Paid/manual, needs terms review | Public listing points to BOOTH/Patreon downloads for PMX/VRM/Blend/VRChat formats. Purchase/access manually, inspect bundled terms, and do not redistribute. |
 | Model preset: `Sameko Saba / Fan Made 3D VRChat Avatar` | Paid/manual, local-only pending terms review | BOOTH download includes VRM/Unity/FBX/Blend/textures. Preserve locally, do not redistribute, and treat as personal/demo only until seller terms are reviewed. |
 | Motion/camera/facial: `GETCHA! - apr(社会の窓P)` | Restricted | Noncommercial MMD/MMD-derived-tool use appears allowed with credits. Direct Three.js/web use needs permission or clarification. |
+| Motion: `VRMA MotionPack` by VRoid Project | Local app playback allowed | Load from ignored local resources. Do not commit/bundle extractable `.vrma` files without a redistribution review. |
 | Music: `GETCHA!` by Giga/KIRA | No reuse license found | Do not bundle the recording or instrumental unless a clear license/permission is obtained. Link/reference only for now. |
 | Choreography: 足太ぺんた `GETCHA!` dance | Credit dependency | apr terms require crediting the choreography/trace source when using the motion. |
 | Node tree: `RC皮肤预设V402` | Terms not found in description | Download page is linked, but no explicit reuse/redistribution terms were found in the Bilibili description. Inspect bundled files. |
@@ -35,6 +36,17 @@ Sources:
 - https://bowlroll.net/file/261196
 - https://apr-mmd.hatenablog.jp/entry/ar384801
 - https://www.nicovideo.jp/watch/sm38028810
+
+### VRM Animation pack
+
+The official VRoid Project `VRMA MotionPack` contains seven `.vrma` files: Show full body, Greeting, Peace sign, Shoot, Spin, Model pose, and Squat. The BOOTH page and bundled readmes allow customization and broad use, including commercial use with credit, subject to prohibited-use restrictions. They prohibit distributing the motions or altered motions in a riggable or extractable form without permission.
+
+This app may load the files from ignored local resources for development/demo playback. Do not commit the extracted `.vrma` files or ship a public bundle that exposes them as downloadable assets without checking the current BOOTH terms again.
+
+Sources:
+
+- https://booth.pm/items/5512385
+- Bundled `Readme_VRMA_MotionPack_EN.txt`
 
 ### Model
 

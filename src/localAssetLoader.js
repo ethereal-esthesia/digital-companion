@@ -19,7 +19,7 @@ function joinUrl(root, path) {
 }
 
 function expectsBinaryAsset(url) {
-  return /\.(pmx|pmd|vrm|vmd|vpd|mp3|wav|ogg|flac|zip|unitypackage|fbx|blend|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);
+  return /\.(pmx|pmd|vrm|vrma|vmd|vpd|mp3|wav|ogg|flac|zip|unitypackage|fbx|blend|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);
 }
 
 function isHtmlFallback(url, response) {
@@ -119,6 +119,22 @@ function normalizeModelPresets(scene, root) {
   ];
 }
 
+function normalizeMotionPresets(scene, root) {
+  const configuredPresets = Array.isArray(scene?.motionPresets) ? scene.motionPresets : [];
+
+  return configuredPresets.map((preset, index) => {
+    const normalized = normalizeAssetEntry("motionPreset", preset, root);
+    return {
+      ...normalized,
+      id: preset.id || `motion-${index + 1}`,
+      label: preset.label || preset.name || normalized.label || `Motion ${index + 1}`,
+      sourceId: preset.sourceId || null,
+      kind: preset.kind || normalized.kind || "vrma",
+      required: Boolean(preset.required)
+    };
+  });
+}
+
 function pickModelPreset(scene, modelPresets) {
   const query = new URLSearchParams(window.location.search);
   const requestedId = query.get(MODEL_PRESET_QUERY_KEY) || scene?.activeModelPreset;
@@ -196,9 +212,16 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
   const scene = pickScene(config);
   const root = config.assetRoot || "/local-resources/original-video-assets/";
   const modelPresets = normalizeModelPresets(scene, root);
+  const motionPresets = normalizeMotionPresets(scene, root);
   const requestedModelPreset = pickModelPreset(scene, modelPresets);
   const modelPresetResults = await Promise.all(
     modelPresets.map(async (preset) => {
+      const probe = await probeAsset(preset.url);
+      return { ...preset, ...probe };
+    })
+  );
+  const motionPresetResults = await Promise.all(
+    motionPresets.map(async (preset) => {
       const probe = await probeAsset(preset.url);
       return { ...preset, ...probe };
     })
@@ -223,6 +246,7 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
     scene,
     assets: results,
     modelPresets: modelPresetResults,
+    motionPresets: motionPresetResults,
     selectedModelPreset,
     summary: summarize(results)
   };
