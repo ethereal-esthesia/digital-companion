@@ -463,7 +463,8 @@ body,
 .model-select-icon,
 .eye-select-icon,
 .face-select-icon,
-.outfit-select-icon {
+.outfit-select-icon,
+.motion-select-icon {
   position: relative;
   flex: 0 0 auto;
   width: 24px;
@@ -579,6 +580,37 @@ body,
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
   content: "";
+}
+
+.motion-select-icon {
+  color: rgb(151 251 255 / 90%);
+}
+
+.motion-select-icon::before {
+  position: absolute;
+  left: 3px;
+  top: 11px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow:
+    7px -5px 0 currentColor,
+    14px 2px 0 currentColor;
+  content: "";
+}
+
+.motion-select-icon::after {
+  position: absolute;
+  left: 4px;
+  top: 7px;
+  width: 16px;
+  height: 10px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  border-radius: 999px;
+  content: "";
+  transform: rotate(-12deg);
 }
 
 .stage-light-icon {

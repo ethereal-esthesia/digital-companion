@@ -17,6 +17,7 @@ const modelPresetSelect = document.querySelector("#modelPresetSelect");
 const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const faceEmoteSelect = document.querySelector("#faceEmoteSelect");
 const outfitMorphSelect = document.querySelector("#outfitMorphSelect");
+const motionModeSelect = document.querySelector("#motionModeSelect");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
@@ -34,6 +35,7 @@ const queryParams = new URLSearchParams(window.location.search);
 const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   mode: "textured",
   lighting: "native",
+  motion: "still",
   stageLighting: 0,
   materialBoostStrength: 0,
   saturation: 1,
@@ -70,6 +72,14 @@ const SATURATION_SHADER = {
 
 const MODEL_MODE_CHOICES = ["textured", "clay"];
 const MODEL_LIGHTING_CHOICES = ["native", "enhanced"];
+const MODEL_MOTION_CHOICES = ["still", "idle", "beat", "dance", "pose"];
+const MODEL_MOTION_LABELS = new Map([
+  ["still", "Still"],
+  ["idle", "Idle"],
+  ["beat", "Beat sway"],
+  ["dance", "Dance test"],
+  ["pose", "Pose loop"]
+]);
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
@@ -81,7 +91,8 @@ const PREVIEW_QUERY_KEYS = {
   saturation: "modelSaturation",
   bloomStrength: "modelBloom",
   cameraZoom: "cameraZoom",
-  modelPreset: "modelPreset"
+  modelPreset: "modelPreset",
+  motion: "modelMotion"
 };
 const DEPRECATED_PREVIEW_QUERY_KEYS = ["modelMaterialPreset", "materialBoost"];
 
@@ -136,6 +147,11 @@ const outfitMorphController = {
 };
 
 let modelPreviewOptions = { ...DEFAULT_MODEL_PREVIEW_OPTIONS };
+const motionEuler = new THREE.Euler(0, 0, 0, "XYZ");
+const motionQuaternion = new THREE.Quaternion();
+const motionController = {
+  lastMode: "still"
+};
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
@@ -720,6 +736,133 @@ function animateDancer(t) {
   bloom.strength = 0.88 + Math.max(0, Math.sin(t * 6.2)) * 0.28;
 }
 
+function getMotionModeLabel(mode) {
+  return MODEL_MOTION_LABELS.get(mode) || mode;
+}
+
+function makeMotionTransform(x = 0, y = 0, z = 0, position = null) {
+  motionEuler.set(x, y, z, "XYZ");
+  const transform = {
+    rotation: motionQuaternion.setFromEuler(motionEuler).toArray()
+  };
+  if (position) {
+    transform.position = position;
+  }
+  return transform;
+}
+
+function buildProceduralVrmPose(mode, t) {
+  if (mode === "idle") {
+    const breath = Math.sin(t * 1.55);
+    const sway = Math.sin(t * 0.72);
+    return {
+      hips: makeMotionTransform(0, sway * 0.018, sway * 0.026, [
+        sway * 0.004,
+        Math.max(0, breath) * 0.006,
+        0
+      ]),
+      spine: makeMotionTransform(breath * 0.018, 0, -sway * 0.026),
+      chest: makeMotionTransform(breath * 0.024, sway * 0.018, sway * 0.018),
+      neck: makeMotionTransform(-breath * 0.01, -sway * 0.018, -sway * 0.008),
+      head: makeMotionTransform(-breath * 0.012, sway * 0.035, sway * 0.018),
+      leftUpperArm: makeMotionTransform(0.045 + breath * 0.015, 0.025, -0.08 + sway * 0.018),
+      rightUpperArm: makeMotionTransform(0.045 + breath * 0.015, -0.025, 0.08 + sway * 0.018)
+    };
+  }
+
+  if (mode === "beat") {
+    const beat = Math.sin(t * 3.2);
+    const pulse = Math.max(0, beat);
+    const sway = Math.sin(t * 1.6);
+    const quick = Math.sin(t * 6.4);
+    return {
+      hips: makeMotionTransform(pulse * 0.035, sway * 0.055, sway * 0.1, [
+        sway * 0.012,
+        pulse * 0.016,
+        0
+      ]),
+      spine: makeMotionTransform(-pulse * 0.035, -sway * 0.032, -sway * 0.07),
+      chest: makeMotionTransform(pulse * 0.04, sway * 0.04, sway * 0.06),
+      neck: makeMotionTransform(0, -sway * 0.035, -quick * 0.018),
+      head: makeMotionTransform(-pulse * 0.028, sway * 0.065, quick * 0.025),
+      leftUpperArm: makeMotionTransform(0.1 + pulse * 0.08, 0.04, -0.24 + quick * 0.045),
+      leftLowerArm: makeMotionTransform(-0.16 - pulse * 0.08, 0, 0.04),
+      rightUpperArm: makeMotionTransform(0.1 + pulse * 0.08, -0.04, 0.24 + quick * 0.045),
+      rightLowerArm: makeMotionTransform(-0.16 - pulse * 0.08, 0, -0.04)
+    };
+  }
+
+  if (mode === "dance") {
+    const beat = Math.sin(t * 3.8);
+    const side = Math.sin(t * 1.9);
+    const cross = Math.sin(t * 3.8 + Math.PI / 2);
+    const step = Math.max(0, Math.sin(t * 3.8));
+    const backStep = Math.max(0, -Math.sin(t * 3.8));
+    return {
+      hips: makeMotionTransform(0.02 + step * 0.035, side * 0.08, side * 0.14, [
+        side * 0.02,
+        Math.abs(beat) * 0.018,
+        0
+      ]),
+      spine: makeMotionTransform(-0.04 - step * 0.03, -side * 0.045, -side * 0.1),
+      chest: makeMotionTransform(0.05 + step * 0.035, side * 0.055, side * 0.085),
+      neck: makeMotionTransform(-0.02, -side * 0.035, -cross * 0.025),
+      head: makeMotionTransform(-0.04, side * 0.08, cross * 0.04),
+      leftUpperLeg: makeMotionTransform(0.06 + step * 0.08, 0.015, -0.035 + side * 0.02),
+      leftLowerLeg: makeMotionTransform(-0.08 - step * 0.11, 0, 0),
+      rightUpperLeg: makeMotionTransform(0.06 + backStep * 0.08, -0.015, 0.035 + side * 0.02),
+      rightLowerLeg: makeMotionTransform(-0.08 - backStep * 0.11, 0, 0),
+      leftUpperArm: makeMotionTransform(0.16 + backStep * 0.16, 0.06, -0.42 + side * 0.08),
+      leftLowerArm: makeMotionTransform(-0.24 - backStep * 0.15, 0, 0.08),
+      rightUpperArm: makeMotionTransform(0.16 + step * 0.16, -0.06, 0.42 + side * 0.08),
+      rightLowerArm: makeMotionTransform(-0.24 - step * 0.15, 0, -0.08)
+    };
+  }
+
+  if (mode === "pose") {
+    const phase = Math.sin(t * 1.05);
+    const lift = (Math.sin(t * 2.1) + 1) * 0.5;
+    const turn = Math.sin(t * 0.55);
+    return {
+      hips: makeMotionTransform(0.02, turn * 0.075, phase * 0.08, [phase * 0.012, lift * 0.012, 0]),
+      spine: makeMotionTransform(-0.03, -turn * 0.045, -phase * 0.08),
+      chest: makeMotionTransform(0.045, turn * 0.055, phase * 0.07),
+      neck: makeMotionTransform(-0.018, -turn * 0.045, -phase * 0.025),
+      head: makeMotionTransform(-0.035, turn * 0.09, phase * 0.045),
+      leftUpperArm: makeMotionTransform(0.18 + lift * 0.16, 0.1, -0.58 + phase * 0.08),
+      leftLowerArm: makeMotionTransform(-0.36 - lift * 0.18, 0.02, 0.12),
+      rightUpperArm: makeMotionTransform(0.18 + (1 - lift) * 0.16, -0.1, 0.58 + phase * 0.08),
+      rightLowerArm: makeMotionTransform(-0.36 - (1 - lift) * 0.18, -0.02, -0.12)
+    };
+  }
+
+  return null;
+}
+
+function resetLoadedModelMotion() {
+  activeVrm?.humanoid?.resetNormalizedPose?.();
+  motionController.lastMode = "still";
+}
+
+function updateLoadedModelMotion(t) {
+  const mode = modelPreviewOptions.motion;
+  if (!activeVrm?.humanoid || mode === "still") {
+    if (motionController.lastMode !== "still") {
+      resetLoadedModelMotion();
+    }
+    return;
+  }
+
+  const pose = buildProceduralVrmPose(mode, t);
+  if (!pose) {
+    resetLoadedModelMotion();
+    return;
+  }
+
+  activeVrm.humanoid.setNormalizedPose(pose);
+  motionController.lastMode = mode;
+}
+
 function animateStage(t) {
   stage.children.forEach((child, index) => {
     if (child.geometry?.type === "TorusGeometry") {
@@ -833,6 +976,11 @@ function getModelPreviewOptions(sceneConfig) {
     MODEL_LIGHTING_CHOICES,
     DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
   );
+  const motion = pickChoice(
+    queryParams.get("modelMotion") || configured.motion || configured.modelMotion,
+    MODEL_MOTION_CHOICES,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.motion
+  );
   const stageLighting = parseUnitInterval(
     queryParams.get("stageLighting") ?? configured.stageLighting,
     DEFAULT_MODEL_PREVIEW_OPTIONS.stageLighting
@@ -863,6 +1011,7 @@ function getModelPreviewOptions(sceneConfig) {
   return {
     mode,
     lighting,
+    motion,
     stageLighting,
     materialBoostStrength: Number.isFinite(materialBoostStrength)
       ? THREE.MathUtils.clamp(materialBoostStrength, 0, 1)
@@ -1409,13 +1558,18 @@ function updatePreviewControls() {
   );
   setPreviewOutput("modelSaturation", formatPreviewNumber(modelPreviewOptions.saturation));
 
+  motionModeSelect.value = modelPreviewOptions.motion;
+  motionModeSelect.title = `Motion ${getMotionModeLabel(modelPreviewOptions.motion)}`;
+
   previewControls.dataset.stage = amount > 0 ? "active" : "";
   previewControls.dataset.boost = modelPreviewOptions.materialBoostStrength > 0 ? "active" : "";
   previewControls.dataset.saturation = modelPreviewOptions.saturation !== 1 ? "active" : "";
+  previewControls.dataset.motion = modelPreviewOptions.motion !== "still" ? "active" : "";
   document.documentElement.dataset.stageLighting = amount.toFixed(2);
   document.documentElement.dataset.modelSaturation = formatPreviewNumber(
     modelPreviewOptions.saturation
   );
+  document.documentElement.dataset.modelMotion = modelPreviewOptions.motion;
 
   previewOptionButtons.forEach((button) => {
     const group = button.dataset.optionGroup;
@@ -1453,6 +1607,7 @@ function updateLocalModelDebug() {
     saturation: modelPreviewOptions.saturation,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
+    motion: modelPreviewOptions.motion,
     modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
     alphaLayers: alphaLayerStats,
     eyeMorph: selectedEyeMorph?.name || "Default eyes",
@@ -1470,7 +1625,7 @@ function updateModelAssetStatus() {
   assetStatus.innerHTML = `
     <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · ${getMotionModeLabel(modelPreviewOptions.motion)} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
@@ -1534,6 +1689,18 @@ function setCameraZoom(value, syncUrl = true) {
   updatePreviewControls();
   updateLocalModelDebug();
   updateModelAssetStatus();
+}
+
+function setMotionMode(value, syncUrl = true) {
+  const motion = pickChoice(value, MODEL_MOTION_CHOICES, DEFAULT_MODEL_PREVIEW_OPTIONS.motion);
+  modelPreviewOptions.motion = motion;
+  if (syncUrl) {
+    setPreviewUrlParam("motion", motion);
+  }
+  if (motion === "still") {
+    resetLoadedModelMotion();
+  }
+  refreshModelPreview();
 }
 
 function setModelPreset(id) {
@@ -1882,6 +2049,7 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     realDancer.rotation.y = Math.PI;
     realDancer.updateMatrixWorld(true);
   }
+  motionController.lastMode = "still";
   const blinkTargets = configureBlink(realDancer);
   populateEyeMorphSelect(realDancer, activeVrm);
   populateFaceEmoteSelect(activeVrm);
@@ -1916,6 +2084,7 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     position: realDancer.position.toArray(),
     scale: realDancer.scale.toArray(),
     stageLighting: modelPreviewOptions.stageLighting,
+    motion: modelPreviewOptions.motion,
     visible: realDancer.visible,
     vrmMeta: activeVrm?.meta || null
   };
@@ -1985,6 +2154,7 @@ function render() {
     animateDancer(elapsed);
     animateStage(elapsed);
   } else {
+    updateLoadedModelMotion(elapsed);
     activeVrm?.update?.(delta);
     updateBlink(delta);
     applyModelPreviewLighting();
@@ -2029,6 +2199,10 @@ faceEmoteSelect.addEventListener("change", (event) => {
 
 outfitMorphSelect.addEventListener("change", (event) => {
   applyOutfitMorphSelection(event.currentTarget.value);
+});
+
+motionModeSelect.addEventListener("change", (event) => {
+  setMotionMode(event.currentTarget.value);
 });
 
 stageLightingSlider.addEventListener("input", (event) => {
