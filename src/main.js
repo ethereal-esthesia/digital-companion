@@ -23,6 +23,9 @@ const eyeMorphSelect = document.querySelector("#eyeMorphSelect");
 const faceEmoteSelect = document.querySelector("#faceEmoteSelect");
 const outfitMorphSelect = document.querySelector("#outfitMorphSelect");
 const motionModeSelect = document.querySelector("#motionModeSelect");
+const speechPhraseSelect = document.querySelector("#speechPhraseSelect");
+const speechBubble = document.querySelector("#speechBubble");
+const speechText = document.querySelector("#speechText");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
@@ -47,6 +50,14 @@ const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   bloomStrength: 0.02,
   cameraZoom: 1
 };
+
+const TEST_SPEECH_PHRASES = [
+  "Ready when you are.",
+  "Pastel blue mode activated.",
+  "The text should resize smoothly for a longer sentence like this one.",
+  "Tiny!",
+  "Someday I will answer with Ollama, but today I am just practicing my stage banter."
+];
 
 const SATURATION_SHADER = {
   uniforms: {
@@ -705,6 +716,100 @@ const orbitTarget = new THREE.Vector3();
 const modelBounds = new THREE.Box3();
 const modelCenter = new THREE.Vector3();
 const modelSize = new THREE.Vector3();
+const speechAnchor = new THREE.Vector3();
+const speechScreenPosition = new THREE.Vector3();
+const speechWorldPosition = new THREE.Vector3();
+
+function populateSpeechPhraseSelect() {
+  speechPhraseSelect.innerHTML = "";
+  TEST_SPEECH_PHRASES.forEach((phrase) => {
+    const option = document.createElement("option");
+    option.value = phrase;
+    option.textContent = phrase;
+    speechPhraseSelect.append(option);
+  });
+}
+
+function getSpeechFontSize(phrase) {
+  const length = phrase.trim().length;
+  if (length > 86) {
+    return 15;
+  }
+  if (length > 58) {
+    return 17;
+  }
+  if (length > 34) {
+    return 20;
+  }
+  if (length < 12) {
+    return 28;
+  }
+  return 23;
+}
+
+function setSpeechPhrase(phrase) {
+  const selectedPhrase = TEST_SPEECH_PHRASES.includes(phrase)
+    ? phrase
+    : TEST_SPEECH_PHRASES[0];
+  speechText.textContent = selectedPhrase;
+  speechBubble.style.setProperty("--speech-font-size", `${getSpeechFontSize(selectedPhrase)}px`);
+  speechBubble.dataset.length = selectedPhrase.length > 58 ? "long" : "normal";
+  speechPhraseSelect.value = selectedPhrase;
+}
+
+function getSpeechAnchorPosition() {
+  if (!activeDancer) {
+    return null;
+  }
+
+  const head = activeDancer.userData?.parts?.head;
+  if (head) {
+    head.getWorldPosition(speechWorldPosition);
+    speechWorldPosition.y += 0.76;
+    speechWorldPosition.x += 0.72;
+    return speechWorldPosition;
+  }
+
+  activeDancer.updateMatrixWorld(true);
+  modelBounds.setFromObject(activeDancer);
+  if (modelBounds.isEmpty()) {
+    return null;
+  }
+
+  modelBounds.getCenter(speechWorldPosition);
+  speechWorldPosition.y = modelBounds.max.y + modelSize.y * 0.05;
+  speechWorldPosition.x += Math.max(modelSize.x * 0.28, 0.34);
+  return speechWorldPosition;
+}
+
+function updateSpeechBubblePosition() {
+  const anchor = getSpeechAnchorPosition();
+  if (!anchor) {
+    speechBubble.dataset.visible = "false";
+    return;
+  }
+
+  speechAnchor.copy(anchor);
+  speechScreenPosition.copy(speechAnchor).project(camera);
+  const outsideClipSpace = speechScreenPosition.z < -1 || speechScreenPosition.z > 1;
+  speechBubble.dataset.visible = outsideClipSpace ? "false" : "true";
+
+  if (outsideClipSpace) {
+    return;
+  }
+
+  const bubbleWidth = speechBubble.offsetWidth;
+  const bubbleHeight = speechBubble.offsetHeight;
+  const rawX = (speechScreenPosition.x * 0.5 + 0.5) * window.innerWidth;
+  const rawY = (-speechScreenPosition.y * 0.5 + 0.5) * window.innerHeight;
+  const x = THREE.MathUtils.clamp(
+    rawX,
+    16 + bubbleWidth * 0.16,
+    window.innerWidth - 16 - bubbleWidth * 0.84
+  );
+  const y = THREE.MathUtils.clamp(rawY, 18 + bubbleHeight, window.innerHeight - 134);
+  speechBubble.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-16%, -100%)`;
+}
 
 function animateDancer(t) {
   const parts = dancer.userData.parts;
@@ -2258,6 +2363,7 @@ function render() {
     applyModelPreviewLighting();
   }
   updateCamera(elapsed);
+  updateSpeechBubblePosition();
   composer.render();
 }
 
@@ -2303,6 +2409,10 @@ motionModeSelect.addEventListener("change", (event) => {
   setMotionMode(event.currentTarget.value);
 });
 
+speechPhraseSelect.addEventListener("change", (event) => {
+  setSpeechPhrase(event.currentTarget.value);
+});
+
 stageLightingSlider.addEventListener("input", (event) => {
   setStageLighting(event.currentTarget.value);
 });
@@ -2326,6 +2436,8 @@ previewOptionButtons.forEach((button) => {
 });
 
 pruneDeprecatedPreviewUrlParams();
+populateSpeechPhraseSelect();
+setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
 updatePreviewControls();
 
 canvas.addEventListener("pointerdown", (event) => {

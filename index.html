@@ -8,6 +8,16 @@
   <body>
     <main id="app">
       <canvas id="scene" aria-label="Neon MMD-style stage recreation"></canvas>
+      <div class="speech-bubble" id="speechBubble" aria-live="polite">
+        <span class="speech-bubble-trail" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+        <p id="speechText">Ready when you are.</p>
+      </div>
       <div class="hud" aria-hidden="false">
         <div class="track">
           <span>GETCHA</span>
@@ -59,6 +69,13 @@
               <span class="parameter-label">Motion</span>
               <select id="motionModeSelect" aria-label="Motion">
                 <option value="still">Still</option>
+              </select>
+            </label>
+            <label class="parameter-select" title="Test phrase">
+              <span class="speech-select-icon" aria-hidden="true"></span>
+              <span class="parameter-label">Says</span>
+              <select id="speechPhraseSelect" aria-label="Test phrase">
+                <option value="Ready when you are.">Ready when you are.</option>
               </select>
             </label>
             <label class="parameter-control" title="Stage lighting">
