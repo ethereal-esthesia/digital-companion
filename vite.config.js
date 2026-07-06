@@ -6,7 +6,7 @@ const LOCAL_ASSET_ROOT = "local-resources/original-video-assets";
 const AUTO_MODEL_FOLDER = "model/vrm-samples";
 const MODEL_EXTENSIONS = new Set([".pmx", ".pmd", ".vrm"]);
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:1b";
+const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
 function slugify(value) {
   return value

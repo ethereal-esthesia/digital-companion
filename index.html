@@ -21,7 +21,7 @@
       <section class="dialogue-console" aria-label="Companion dialogue">
         <div class="dialogue-history" id="dialogueHistory" aria-live="polite"></div>
         <form class="dialogue-form" id="dialogueForm">
-          <input id="dialogueInput" type="text" autocomplete="off" aria-label="Message companion" />
+          <input id="dialogueInput" type="text" autocomplete="off" aria-label="Message companion" placeholder="/remember, /teach, or chat" />
           <button type="submit">Send</button>
         </form>
       </section>
@@ -84,6 +84,12 @@
               <select id="speechPhraseSelect" aria-label="Test phrase">
                 <option value="Ready when you are.">Ready when you are.</option>
               </select>
+            </label>
+            <label class="parameter-control" title="Reading speed">
+              <span class="speech-select-icon" aria-hidden="true"></span>
+              <span class="parameter-label">WPM</span>
+              <input id="readingWpm" type="number" min="120" max="900" step="10" aria-label="Reading speed in words per minute" />
+              <output class="parameter-value" data-value-for="readingWpm" for="readingWpm">400</output>
             </label>
             <label class="parameter-control" title="Stage lighting">
               <span class="stage-light-icon" aria-hidden="true"></span>

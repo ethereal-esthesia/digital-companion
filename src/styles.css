@@ -51,12 +51,12 @@ body,
   z-index: 3;
   display: grid;
   place-items: center;
-  width: clamp(178px, 23vw, 292px);
+  width: clamp(206px, 27vw, 340px);
   min-height: clamp(84px, 11vw, 126px);
   max-width: calc(100vw - 32px);
-  padding: 18px 22px;
+  padding: 18px 32px;
   border: 1px solid rgb(137 198 232 / 72%);
-  border-radius: 999px;
+  border-radius: 46px;
   background:
     linear-gradient(160deg, rgb(248 253 255 / 94%) 0 42%, rgb(204 234 255 / 94%) 100%),
     #d8efff;
@@ -165,7 +165,7 @@ body,
 .speech-bubble p {
   position: relative;
   z-index: 1;
-  max-width: 100%;
+  max-width: calc(100% - 6px);
   margin: 0;
   font-size: var(--speech-font-size);
   font-weight: 850;
@@ -474,19 +474,49 @@ body,
   text-align: right;
 }
 
-.preview-panel input[type="range"] {
+.preview-panel input[type="range"],
+.preview-panel input[type="number"] {
   width: 100%;
   min-width: 0;
   height: 22px;
   margin: 0;
+}
+
+.preview-panel input[type="range"] {
   accent-color: var(--cyan-soft);
   background: transparent;
 }
 
 .preview-panel input[type="range"]:focus-visible,
+.preview-panel input[type="number"]:focus-visible,
 .parameter-select select:focus-visible {
   outline: 2px solid var(--cyan-soft);
   outline-offset: 4px;
+}
+
+.preview-panel input[type="number"] {
+  border: 1px solid rgb(187 251 255 / 28%);
+  border-radius: 6px;
+  background: rgb(3 10 18 / 42%);
+  color: white;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.preview-panel input[type="number"][aria-invalid="true"] {
+  border-color: rgb(255 79 120 / 78%);
+  background: rgb(80 6 24 / 46%);
+  box-shadow:
+    0 0 14px rgb(255 79 120 / 22%),
+    inset 0 0 10px rgb(255 79 120 / 12%);
+}
+
+.preview-panel input[type="number"][aria-invalid="true"]:focus-visible {
+  outline-color: rgb(255 117 151 / 86%);
 }
 
 .preview-panel input[type="range"]::-webkit-slider-runnable-track {
@@ -1088,9 +1118,9 @@ body,
   }
 
   .speech-bubble {
-    width: clamp(156px, 36vw, 226px);
+    width: clamp(184px, 42vw, 258px);
     min-height: clamp(74px, 18vw, 108px);
-    padding: 14px 18px;
+    padding: 14px 26px;
   }
 }
 
@@ -1152,8 +1182,8 @@ body,
   }
 
   .speech-bubble {
-    width: min(52vw, 194px);
+    width: min(66vw, 236px);
     min-height: 72px;
-    padding: 12px 15px;
+    padding: 12px 22px;
   }
 }

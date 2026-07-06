@@ -117,10 +117,18 @@ Then open the local development URL shown by Vite.
 The prototype can talk to a local Ollama server through the dev server bridge. The default lightweight model is:
 
 ```bash
-ollama pull llama3.2:1b
+ollama pull llama3.2:3b
 ```
 
 Start Ollama, run the app, and use the dialogue console at the top of the scene.
+
+The console supports lightweight local memory:
+
+- `/remember I like concise answers` stores facts about the user.
+- `/teach The website has a pricing page` stores project or website facts.
+- `/memory` prints saved notes.
+- `/appearance` prints the current model, expression, motion, and scene snapshot sent to the AI.
+- `/forget` clears saved notes.
 
 ---
 

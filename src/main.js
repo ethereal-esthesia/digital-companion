@@ -24,6 +24,7 @@ const faceEmoteSelect = document.querySelector("#faceEmoteSelect");
 const outfitMorphSelect = document.querySelector("#outfitMorphSelect");
 const motionModeSelect = document.querySelector("#motionModeSelect");
 const speechPhraseSelect = document.querySelector("#speechPhraseSelect");
+const readingWpmInput = document.querySelector("#readingWpm");
 const speechBubble = document.querySelector("#speechBubble");
 const speechText = document.querySelector("#speechText");
 const dialogueHistory = document.querySelector("#dialogueHistory");
@@ -51,7 +52,8 @@ const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   materialBoostStrength: 0,
   saturation: 1,
   bloomStrength: 0.02,
-  cameraZoom: 1
+  cameraZoom: 1,
+  readingWpm: 400
 };
 
 const TEST_SPEECH_PHRASES = [
@@ -59,14 +61,18 @@ const TEST_SPEECH_PHRASES = [
   "Pastel blue mode activated.",
   "The text should resize smoothly for a longer sentence like this one.",
   "Tiny!",
+  "First I can show two sentences. Then I wait for the reader. After that, I continue with the next thought.",
   "Someday I will answer with Ollama, but today I am just practicing my stage banter."
 ];
-const OLLAMA_MODEL = "llama3.2:1b";
+const OLLAMA_MODEL = "llama3.2:3b";
+const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =
-  "You are a warm, concise desktop companion. Reply in one or two short sentences.";
-const DOUBLE_READING_RATE_MS_PER_WORD = 150;
-const MIN_SPEECH_VISIBLE_MS = 1800;
-const MAX_SPEECH_VISIBLE_MS = 9000;
+  "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
+const COMPANION_MEMORY_STORAGE_KEY = "digitalCompanion.vitaMemory";
+const RECENT_TRANSCRIPT_LINES = 20;
+const SPEECH_SENTENCES_PER_PAGE = 2;
+const READING_WPM_MIN = 120;
+const READING_WPM_MAX = 900;
 
 const SATURATION_SHADER = {
   uniforms: {
@@ -116,6 +122,7 @@ const PREVIEW_QUERY_KEYS = {
   saturation: "modelSaturation",
   bloomStrength: "modelBloom",
   cameraZoom: "cameraZoom",
+  readingWpm: "readingWpm",
   modelPreset: "modelPreset",
   motion: "modelMotion"
 };
@@ -185,10 +192,13 @@ const motionController = {
 };
 const dialogueController = {
   messages: [],
-  pending: false
+  pending: false,
+  memory: loadCompanionMemory()
 };
 const speechController = {
-  visibleUntil: 0
+  visibleUntil: 0,
+  chunks: [],
+  chunkIndex: 0
 };
 
 const scene = new THREE.Scene();
@@ -763,21 +773,47 @@ function getSpeechFontSize(phrase) {
   return 23;
 }
 
+function splitSpeechSentences(phrase) {
+  const cleanPhrase = phrase.trim();
+  if (!cleanPhrase) {
+    return [];
+  }
+
+  const sentences = cleanPhrase.match(/[^.!?]+(?:[.!?]+|$)/g);
+  return (sentences || [cleanPhrase])
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function chunkSpeechPhrase(phrase) {
+  const sentences = splitSpeechSentences(phrase);
+  const chunks = [];
+  for (let index = 0; index < sentences.length; index += SPEECH_SENTENCES_PER_PAGE) {
+    chunks.push(sentences.slice(index, index + SPEECH_SENTENCES_PER_PAGE).join(" "));
+  }
+  return chunks.length > 0 ? chunks : [TEST_SPEECH_PHRASES[0]];
+}
+
 function getSpeechVisibleDuration(phrase) {
   const wordCount = phrase.trim().split(/\s+/).filter(Boolean).length;
-  return THREE.MathUtils.clamp(
-    wordCount * DOUBLE_READING_RATE_MS_PER_WORD + 900,
-    MIN_SPEECH_VISIBLE_MS,
-    MAX_SPEECH_VISIBLE_MS
-  );
+  return (wordCount / modelPreviewOptions.readingWpm) * 60000;
+}
+
+function showSpeechChunk(index = speechController.chunkIndex) {
+  const spokenPhrase = speechController.chunks[index] || TEST_SPEECH_PHRASES[0];
+  const hasMore = index < speechController.chunks.length - 1;
+  const displayPhrase = hasMore ? `${spokenPhrase} ...` : spokenPhrase;
+  speechText.textContent = displayPhrase;
+  speechBubble.style.setProperty("--speech-font-size", `${getSpeechFontSize(displayPhrase)}px`);
+  speechBubble.dataset.length = displayPhrase.length > 58 ? "long" : "normal";
+  speechController.chunkIndex = index;
+  speechController.visibleUntil = performance.now() + getSpeechVisibleDuration(spokenPhrase);
 }
 
 function showSpeechPhrase(phrase) {
   const spokenPhrase = phrase.trim() || TEST_SPEECH_PHRASES[0];
-  speechText.textContent = spokenPhrase;
-  speechBubble.style.setProperty("--speech-font-size", `${getSpeechFontSize(spokenPhrase)}px`);
-  speechBubble.dataset.length = spokenPhrase.length > 58 ? "long" : "normal";
-  speechController.visibleUntil = performance.now() + getSpeechVisibleDuration(spokenPhrase);
+  speechController.chunks = chunkSpeechPhrase(spokenPhrase);
+  showSpeechChunk(0);
 }
 
 function setSpeechPhrase(phrase) {
@@ -786,6 +822,214 @@ function setSpeechPhrase(phrase) {
     : TEST_SPEECH_PHRASES[0];
   showSpeechPhrase(selectedPhrase);
   speechPhraseSelect.value = selectedPhrase;
+}
+
+function loadCompanionMemory() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COMPANION_MEMORY_STORAGE_KEY) || "{}");
+    return {
+      user: Array.isArray(stored.user) ? stored.user : [],
+      website: Array.isArray(stored.website) ? stored.website : []
+    };
+  } catch {
+    return { user: [], website: [] };
+  }
+}
+
+function saveCompanionMemory() {
+  localStorage.setItem(
+    COMPANION_MEMORY_STORAGE_KEY,
+    JSON.stringify(dialogueController.memory)
+  );
+}
+
+function rememberCompanionFact(kind, fact) {
+  const cleanFact = fact.trim();
+  if (!cleanFact) {
+    return false;
+  }
+
+  const facts = dialogueController.memory[kind];
+  if (!facts.includes(cleanFact)) {
+    facts.push(cleanFact);
+    saveCompanionMemory();
+  }
+  return true;
+}
+
+function formatMemorySection() {
+  const userFacts = dialogueController.memory.user;
+  const websiteFacts = dialogueController.memory.website;
+  const lines = [];
+
+  if (userFacts.length > 0) {
+    lines.push("About the user:");
+    userFacts.slice(-24).forEach((fact) => {
+      lines.push(`- ${fact}`);
+    });
+  }
+
+  if (websiteFacts.length > 0) {
+    lines.push("Website/project knowledge:");
+    websiteFacts.slice(-36).forEach((fact) => {
+      lines.push(`- ${fact}`);
+    });
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "No saved memory yet.";
+}
+
+function getVisibleModelName() {
+  return localAssetState?.selectedModelPreset?.label || realDancer?.name || COMPANION_FALLBACK_NAME;
+}
+
+function toTitleCaseName(value) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function getCatchyCharacterName() {
+  const rawName = getVisibleModelName()
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/sample/gi, "")
+    .replace(/avatar/gi, "")
+    .replace(/\bvrm\b/gi, "")
+    .replace(/\bpmx\b/gi, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!rawName) {
+    return COMPANION_FALLBACK_NAME;
+  }
+
+  const parts = rawName.split(/\s+/).filter(Boolean);
+  const rubyPart = parts.find((part) => /^rub/i.test(part));
+  if (rubyPart) {
+    return "Ruby";
+  }
+
+  const firstReadablePart = parts.find((part) => /[a-z]/i.test(part));
+  return firstReadablePart ? toTitleCaseName(firstReadablePart) : COMPANION_FALLBACK_NAME;
+}
+
+function formatRecentTranscript() {
+  const conversation = dialogueController.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .slice(-RECENT_TRANSCRIPT_LINES);
+
+  if (conversation.length === 0) {
+    return "No prior session lines.";
+  }
+
+  return conversation
+    .map((message) => `${message.role === "user" ? "User" : getCatchyCharacterName()}: ${message.content}`)
+    .join("\n");
+}
+
+function getMemorySummary() {
+  const userCount = dialogueController.memory.user.length;
+  const websiteCount = dialogueController.memory.website.length;
+  return `${userCount} user fact${userCount === 1 ? "" : "s"}, ${websiteCount} website fact${websiteCount === 1 ? "" : "s"}`;
+}
+
+function getSelectedControllerLabel(controller, fallback) {
+  return controller.options.find((option) => option.id === controller.selectedId)?.name || fallback;
+}
+
+function getCurrentAppearanceSnapshot() {
+  const selectedModel = localAssetState?.selectedModelPreset;
+  const characterName = getCatchyCharacterName();
+  const modelName = getVisibleModelName();
+  const modelFormat = getModelFormatLabel(activeModelKind);
+  const modelPath = selectedModel?.path || selectedModel?.url || window.localModelDebug?.modelPath || "";
+  const selectedEyeMorph = getSelectedControllerLabel(eyeMorphController, "Default eyes");
+  const selectedFaceEmote = getSelectedControllerLabel(faceEmoteController, "Default face");
+  const selectedOutfitMorph = getSelectedControllerLabel(outfitMorphController, "Default outfit");
+  const motionLabel = getMotionModeLabel(modelPreviewOptions.motion);
+  const stageLighting = Math.round(modelPreviewOptions.stageLighting * 100);
+  const bloom = formatPreviewNumber(modelPreviewOptions.bloomStrength);
+  const materialBoost = formatPreviewNumber(modelPreviewOptions.materialBoostStrength);
+  const saturation = formatPreviewNumber(modelPreviewOptions.saturation);
+
+  return [
+    `Name: ${characterName}`,
+    `Visible model: ${modelName} (${modelFormat})`,
+    `Name source: catchy name derived from visible model`,
+    modelPath ? `Model source: ${modelPath}` : "",
+    `Expression: ${selectedFaceEmote}; eyes: ${selectedEyeMorph}`,
+    `Outfit/body option: ${selectedOutfitMorph}`,
+    `Pose/motion: ${motionLabel} (${motionController.status})`,
+    `Render style: ${modelPreviewOptions.mode}; lighting: ${modelPreviewOptions.lighting}`,
+    `Scene tuning: stage ${stageLighting}%, bloom ${bloom}, material boost ${materialBoost}, saturation ${saturation}`,
+    `Camera zoom: ${formatPreviewNumber(modelPreviewOptions.cameraZoom)}`
+  ].filter(Boolean).join("\n");
+}
+
+function handleMemoryCommand(prompt) {
+  const command = prompt.match(/^\/(\w+)(?:\s+([\s\S]+))?$/);
+  const naturalRemember = prompt.match(/^remember(?:\s+that)?\s+([\s\S]+)$/i);
+  const naturalTeach = prompt.match(/^(?:learn|teach)(?:\s+that)?\s+([\s\S]+)$/i);
+
+  if (naturalRemember) {
+    return handleMemoryCommand(`/remember ${naturalRemember[1]}`);
+  }
+  if (naturalTeach) {
+    return handleMemoryCommand(`/teach ${naturalTeach[1]}`);
+  }
+  if (!command) {
+    return false;
+  }
+
+  const [, name, rawValue = ""] = command;
+  const value = rawValue.trim();
+
+  if (name === "remember") {
+    if (!rememberCompanionFact("user", value)) {
+      addDialogueLine("system", "Usage: /remember a fact about you");
+      return true;
+    }
+    addDialogueLine("system", `remembered: ${value}`);
+    showSpeechPhrase("I'll remember that.");
+    return true;
+  }
+
+  if (name === "teach") {
+    if (!rememberCompanionFact("website", value)) {
+      addDialogueLine("system", "Usage: /teach a fact about the website or project");
+      return true;
+    }
+    addDialogueLine("system", `learned: ${value}`);
+    showSpeechPhrase("Got it. I added that to my notes.");
+    return true;
+  }
+
+  if (name === "memory") {
+    addDialogueLine("system", `${getMemorySummary()}`);
+    formatMemorySection().split("\n").forEach((line) => {
+      addDialogueLine("system", line);
+    });
+    return true;
+  }
+
+  if (name === "appearance") {
+    getCurrentAppearanceSnapshot().split("\n").forEach((line) => {
+      addDialogueLine("system", line);
+    });
+    return true;
+  }
+
+  if (name === "forget") {
+    dialogueController.memory = { user: [], website: [] };
+    saveCompanionMemory();
+    addDialogueLine("system", "memory cleared");
+    showSpeechPhrase("I cleared my saved notes.");
+    return true;
+  }
+
+  return false;
 }
 
 function renderDialogueHistory() {
@@ -810,12 +1054,42 @@ function addDialogueLine(role, content) {
   renderDialogueHistory();
 }
 
-function getOllamaMessages() {
+function shouldIncludeSavedMemory(prompt) {
+  return /\b(?:remember|memory|know about me|about me|my favorite|my name|i like|i prefer|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
+}
+
+function getCurrentTurnGuidance(prompt) {
+  if (/^\s*(?:hi|hello|hey|yo|how are you|how's it going|how are things)[?!. ]*$/i.test(prompt)) {
+    return "Latest user message is a casual greeting. Answer warmly without mentioning model names, filenames, appearance metadata, saved memory, docs, or website facts.";
+  }
+
+  return "Answer the latest user message directly. Mention appearance or model details only if the user asks about identity, looks, pose, motion, or the current scene.";
+}
+
+function getOllamaMessages(currentPrompt = "") {
   const conversation = dialogueController.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-8);
+    .slice(-RECENT_TRANSCRIPT_LINES);
+  const savedMemory = shouldIncludeSavedMemory(currentPrompt)
+    ? formatMemorySection()
+    : "Available but omitted for this turn because the latest user message does not ask about saved facts.";
+  const memoryContext = [
+    COMPANION_SYSTEM_PROMPT,
+    "",
+    "Current turn guidance:",
+    getCurrentTurnGuidance(currentPrompt),
+    "",
+    "Saved memory:",
+    savedMemory,
+    "",
+    "Current appearance snapshot:",
+    getCurrentAppearanceSnapshot(),
+    "",
+    "Recent transcript:",
+    formatRecentTranscript()
+  ].join("\n");
   return [
-    { role: "system", content: COMPANION_SYSTEM_PROMPT },
+    { role: "system", content: memoryContext },
     ...conversation
   ];
 }
@@ -824,7 +1098,7 @@ function cleanCompanionReply(reply) {
   return reply.trim().replace(/^["“](.*)["”]$/s, "$1").trim();
 }
 
-async function requestOllamaReply() {
+async function requestOllamaReply(prompt) {
   const response = await fetch("/ollama-chat", {
     method: "POST",
     headers: {
@@ -832,7 +1106,7 @@ async function requestOllamaReply() {
     },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
-      messages: getOllamaMessages()
+      messages: getOllamaMessages(prompt)
     })
   });
 
@@ -854,6 +1128,15 @@ async function submitDialoguePrompt(prompt) {
     return;
   }
 
+  if (/^\/\w+/.test(trimmedPrompt) || /^(?:remember|learn|teach)(?:\s+that)?\s+/i.test(trimmedPrompt)) {
+    dialogueInput.value = "";
+    addDialogueLine("user", trimmedPrompt);
+    if (!handleMemoryCommand(trimmedPrompt)) {
+      addDialogueLine("system", "Unknown command. Try /remember, /teach, /memory, /appearance, or /forget.");
+    }
+    return;
+  }
+
   dialogueController.pending = true;
   dialogueInput.value = "";
   dialogueInput.disabled = true;
@@ -862,12 +1145,16 @@ async function submitDialoguePrompt(prompt) {
   addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
 
   try {
-    const reply = cleanCompanionReply(await requestOllamaReply());
+    const reply = cleanCompanionReply(await requestOllamaReply(trimmedPrompt));
     dialogueController.messages = dialogueController.messages.filter(
       (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
     );
-    addDialogueLine("assistant", reply || "I am here.");
-    showSpeechPhrase(reply || "I am here.");
+    if (!reply) {
+      addDialogueLine("system", `${OLLAMA_MODEL} returned an empty reply. Try again.`);
+      return;
+    }
+    addDialogueLine("assistant", reply);
+    showSpeechPhrase(reply);
   } catch (error) {
     dialogueController.messages = dialogueController.messages.filter(
       (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
@@ -910,6 +1197,13 @@ function getSpeechAnchorPosition() {
 }
 
 function updateSpeechBubblePosition() {
+  if (
+    performance.now() >= speechController.visibleUntil &&
+    speechController.chunkIndex < speechController.chunks.length - 1
+  ) {
+    showSpeechChunk(speechController.chunkIndex + 1);
+  }
+
   const anchor = getSpeechAnchorPosition();
   if (!anchor) {
     speechBubble.dataset.visible = "false";
@@ -1320,6 +1614,12 @@ function getModelPreviewOptions(sceneConfig) {
     CAMERA_ZOOM_MIN,
     CAMERA_ZOOM_MAX
   );
+  const readingWpm = Math.round(parseClampedNumber(
+    queryParams.get("readingWpm") ?? configured.readingWpm,
+    DEFAULT_MODEL_PREVIEW_OPTIONS.readingWpm,
+    READING_WPM_MIN,
+    READING_WPM_MAX
+  ));
 
   return {
     mode,
@@ -1331,7 +1631,8 @@ function getModelPreviewOptions(sceneConfig) {
       : DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength,
     saturation,
     bloomStrength,
-    cameraZoom
+    cameraZoom,
+    readingWpm
   };
 }
 
@@ -1806,7 +2107,9 @@ function setPreviewUrlParam(option, value) {
     return;
   }
 
-  const normalizedValue = typeof value === "number"
+  const normalizedValue = option === "readingWpm"
+    ? String(Math.round(Number(value)))
+    : typeof value === "number"
       ? formatPreviewNumber(value)
       : String(value);
   queryParams.set(key, normalizedValue);
@@ -1873,6 +2176,15 @@ function updatePreviewControls() {
   );
   setPreviewOutput("modelSaturation", formatPreviewNumber(modelPreviewOptions.saturation));
 
+  if (
+    document.activeElement !== readingWpmInput &&
+    readingWpmInput.dataset.valid !== "false"
+  ) {
+    readingWpmInput.value = String(modelPreviewOptions.readingWpm);
+  }
+  readingWpmInput.setAttribute("aria-valuetext", `${modelPreviewOptions.readingWpm} words per minute`);
+  setPreviewOutput("readingWpm", String(modelPreviewOptions.readingWpm));
+
   motionModeSelect.value = modelPreviewOptions.motion;
   motionModeSelect.title = `Motion ${getMotionModeLabel(modelPreviewOptions.motion)}`;
 
@@ -1932,6 +2244,7 @@ function updateLocalModelDebug() {
     saturation: modelPreviewOptions.saturation,
     bloomStrength: modelPreviewOptions.bloomStrength,
     cameraZoom: modelPreviewOptions.cameraZoom,
+    readingWpm: modelPreviewOptions.readingWpm,
     motion: modelPreviewOptions.motion,
     motionOptions: motionController.options.map((option) => option.label),
     motionStatus: motionController.status,
@@ -1954,7 +2267,7 @@ function updateModelAssetStatus() {
   assetStatus.innerHTML = `
     <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · ${getMotionModeLabel(modelPreviewOptions.motion)} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${countModelBones(realDancer)} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · ${getMotionModeLabel(modelPreviewOptions.motion)} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${modelPreviewOptions.readingWpm} wpm · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
@@ -2014,6 +2327,46 @@ function setCameraZoom(value, syncUrl = true) {
   );
   if (syncUrl) {
     setPreviewUrlParam("cameraZoom", modelPreviewOptions.cameraZoom);
+  }
+  updatePreviewControls();
+  updateLocalModelDebug();
+  updateModelAssetStatus();
+}
+
+function getReadingWpmDraft(value) {
+  const draft = String(value).trim();
+  if (!draft) {
+    return null;
+  }
+
+  const nextWpm = Number(draft);
+  if (
+    !Number.isFinite(nextWpm) ||
+    nextWpm < READING_WPM_MIN ||
+    nextWpm > READING_WPM_MAX
+  ) {
+    return null;
+  }
+
+  return Math.round(nextWpm);
+}
+
+function setReadingWpmInputValidity(isValid) {
+  readingWpmInput.dataset.valid = isValid ? "true" : "false";
+  readingWpmInput.setAttribute("aria-invalid", isValid ? "false" : "true");
+}
+
+function setReadingWpm(value, syncUrl = true) {
+  const nextWpm = getReadingWpmDraft(value);
+  if (nextWpm === null) {
+    setReadingWpmInputValidity(false);
+    return;
+  }
+
+  setReadingWpmInputValidity(true);
+  modelPreviewOptions.readingWpm = nextWpm;
+  if (syncUrl) {
+    setPreviewUrlParam("readingWpm", modelPreviewOptions.readingWpm);
   }
   updatePreviewControls();
   updateLocalModelDebug();
@@ -2575,6 +2928,10 @@ materialBoostStrengthSlider.addEventListener("input", (event) => {
 
 modelSaturationSlider.addEventListener("input", (event) => {
   setModelSaturation(event.currentTarget.value);
+});
+
+readingWpmInput.addEventListener("input", (event) => {
+  setReadingWpm(event.currentTarget.value);
 });
 
 previewOptionButtons.forEach((button) => {
