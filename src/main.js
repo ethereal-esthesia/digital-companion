@@ -30,6 +30,11 @@ const speechText = document.querySelector("#speechText");
 const dialogueHistory = document.querySelector("#dialogueHistory");
 const dialogueForm = document.querySelector("#dialogueForm");
 const dialogueInput = document.querySelector("#dialogueInput");
+const clearMemoryButton = document.querySelector("#clearMemoryButton");
+const viewMemoryButton = document.querySelector("#viewMemoryButton");
+const memoryDialog = document.querySelector("#memoryDialog");
+const closeMemoryDialog = document.querySelector("#closeMemoryDialog");
+const memoryMetadataContent = document.querySelector("#memoryMetadataContent");
 const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
@@ -69,7 +74,14 @@ const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
 const COMPANION_MEMORY_STORAGE_KEY = "digitalCompanion.vitaMemory";
+const COMPANION_CONTEXT_STORAGE_KEY = "digitalCompanion.contextLog";
 const RECENT_TRANSCRIPT_LINES = 20;
+const PERSISTED_CONTEXT_LINES = 40;
+const DEFAULT_USER_PROFILE = {
+  userName: "Guest",
+  interests: [],
+  lastVibe: ""
+};
 const SPEECH_SENTENCES_PER_PAGE = 2;
 const READING_WPM_MIN = 120;
 const READING_WPM_MAX = 900;
@@ -129,6 +141,7 @@ const PREVIEW_QUERY_KEYS = {
 const DEPRECATED_PREVIEW_QUERY_KEYS = ["modelMaterialPreset", "materialBoost"];
 
 const BLINK_MORPH_NAMES = ["まばたき", "blink", "Blink", "BLINK"];
+const VRM_BLINK_EXPRESSION_NAME = "blink";
 const BLINK_CLOSE_RATIO = 0.32;
 const BLINK_HOLD_RATIO = 0.18;
 const VRM_BOTH_EYE_EXPRESSION_LABELS = new Map([
@@ -191,7 +204,7 @@ const motionController = {
   configured: false
 };
 const dialogueController = {
-  messages: [],
+  messages: loadCompanionContext(),
   pending: false,
   memory: loadCompanionMemory()
 };
@@ -824,15 +837,47 @@ function setSpeechPhrase(phrase) {
   speechPhraseSelect.value = selectedPhrase;
 }
 
+function getDefaultUserProfile() {
+  return {
+    userName: DEFAULT_USER_PROFILE.userName,
+    interests: [...DEFAULT_USER_PROFILE.interests],
+    lastVibe: DEFAULT_USER_PROFILE.lastVibe
+  };
+}
+
+function normalizeUserProfile(profile = {}) {
+  const fallback = getDefaultUserProfile();
+  const userName = typeof profile.userName === "string" && profile.userName.trim()
+    ? profile.userName.trim()
+    : fallback.userName;
+  const interests = Array.isArray(profile.interests)
+    ? profile.interests
+        .filter((interest) => typeof interest === "string")
+        .map((interest) => interest.trim())
+        .filter(Boolean)
+        .slice(-24)
+    : fallback.interests;
+  const lastVibe = typeof profile.lastVibe === "string" && profile.lastVibe.trim()
+    ? profile.lastVibe.trim()
+    : fallback.lastVibe;
+
+  return {
+    userName,
+    interests: [...new Set(interests)],
+    lastVibe
+  };
+}
+
 function loadCompanionMemory() {
   try {
     const stored = JSON.parse(localStorage.getItem(COMPANION_MEMORY_STORAGE_KEY) || "{}");
     return {
       user: Array.isArray(stored.user) ? stored.user : [],
-      website: Array.isArray(stored.website) ? stored.website : []
+      website: Array.isArray(stored.website) ? stored.website : [],
+      profile: normalizeUserProfile(stored.profile)
     };
   } catch {
-    return { user: [], website: [] };
+    return { user: [], website: [], profile: getDefaultUserProfile() };
   }
 }
 
@@ -841,6 +886,36 @@ function saveCompanionMemory() {
     COMPANION_MEMORY_STORAGE_KEY,
     JSON.stringify(dialogueController.memory)
   );
+}
+
+function loadCompanionContext() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COMPANION_CONTEXT_STORAGE_KEY) || "[]");
+    if (!Array.isArray(stored)) {
+      return [];
+    }
+
+    return stored
+      .filter((message) =>
+        (message.role === "user" || message.role === "assistant") &&
+        typeof message.content === "string" &&
+        message.content.trim()
+      )
+      .map((message) => ({
+        role: message.role,
+        content: message.content.trim()
+      }))
+      .slice(-PERSISTED_CONTEXT_LINES);
+  } catch {
+    return [];
+  }
+}
+
+function saveCompanionContext() {
+  const persistedMessages = dialogueController.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .slice(-PERSISTED_CONTEXT_LINES);
+  localStorage.setItem(COMPANION_CONTEXT_STORAGE_KEY, JSON.stringify(persistedMessages));
 }
 
 function rememberCompanionFact(kind, fact) {
@@ -857,10 +932,172 @@ function rememberCompanionFact(kind, fact) {
   return true;
 }
 
+function setUserName(name) {
+  const cleanName = formatUserName(name);
+  if (!cleanName) {
+    return false;
+  }
+
+  dialogueController.memory.profile.userName = cleanName;
+  saveCompanionMemory();
+  return true;
+}
+
+function rememberInterest(interest) {
+  const cleanInterest = interest.trim();
+  if (!cleanInterest) {
+    return false;
+  }
+
+  const interests = dialogueController.memory.profile.interests;
+  if (!interests.some((stored) => stored.toLowerCase() === cleanInterest.toLowerCase())) {
+    interests.push(cleanInterest);
+    dialogueController.memory.profile.interests = interests.slice(-24);
+    saveCompanionMemory();
+  }
+  return true;
+}
+
+function formatUserName(name) {
+  const cleanName = name.trim().replace(/\s+/g, " ");
+  if (/^[a-z][a-z\s'-]*$/i.test(cleanName)) {
+    return cleanName
+      .split(/\s+/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" ");
+  }
+
+  return cleanName;
+}
+
+function setLastVibe(vibe) {
+  const cleanVibe = vibe.trim();
+  if (!cleanVibe) {
+    return false;
+  }
+
+  dialogueController.memory.profile.lastVibe = cleanVibe;
+  saveCompanionMemory();
+  return true;
+}
+
+function splitProfileItems(value) {
+  return value
+    .replace(/\band\b/gi, ",")
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .map((item) => item.replace(/^(?:and|also)\s+/i, "").trim())
+    .filter(Boolean);
+}
+
+function shouldExtractProfileMetadata(prompt) {
+  return /\b(?:i|i'm|i am|my|me|call me|name|like|love|enjoy|into|interested|feel|feeling|mood|vibe)\b/i.test(prompt);
+}
+
+function parseProfileMetadataJson(reply) {
+  const cleanedReply = reply.trim().replace(/```(?:json)?/gi, "").replace(/```/g, "");
+  const start = cleanedReply.indexOf("{");
+  const end = cleanedReply.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(cleanedReply.slice(start, end + 1));
+    return {
+      userName: typeof parsed.userName === "string" && parsed.userName.trim()
+        ? parsed.userName.trim()
+        : null,
+      interests: Array.isArray(parsed.interests)
+        ? parsed.interests.filter((interest) => typeof interest === "string")
+        : [],
+      lastVibe: typeof parsed.lastVibe === "string" && parsed.lastVibe.trim()
+        ? parsed.lastVibe.trim()
+        : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function applyProfileMetadataUpdate(update) {
+  if (!update) {
+    return false;
+  }
+
+  let changed = false;
+  if (update.userName) {
+    changed = setUserName(update.userName) || changed;
+  }
+  update.interests.forEach((interest) => {
+    changed = rememberInterest(interest) || changed;
+  });
+  if (update.lastVibe) {
+    changed = setLastVibe(update.lastVibe) || changed;
+  }
+  return changed;
+}
+
+async function requestProfileMetadataUpdate(prompt) {
+  const response = await fetch("/ollama-chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Extract durable user metadata from the latest user message.",
+            "Return only JSON with keys: userName, interests, lastVibe.",
+            "Use null for userName or lastVibe when absent, and [] for interests when absent.",
+            "Set userName when the user introduces or corrects their name, including casual greetings like 'hi, I am Shane'.",
+            "Set interests only for stable likes, hobbies, topics, tools, genres, or preferences the user mentions.",
+            "Set lastVibe only for the user's current mood, energy, or vibe.",
+            "Do not infer metadata from assistant text or from the existing profile.",
+            `Existing profile: ${JSON.stringify(dialogueController.memory.profile)}`
+          ].join(" ")
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Ollama returned ${response.status}`);
+  }
+
+  return parseProfileMetadataJson(payload.message || "");
+}
+
+async function learnProfileFromPrompt(prompt) {
+  if (!shouldExtractProfileMetadata(prompt)) {
+    return;
+  }
+
+  try {
+    applyProfileMetadataUpdate(await requestProfileMetadataUpdate(prompt));
+  } catch (error) {
+    console.warn("Profile metadata extraction failed", error);
+  }
+}
+
 function formatMemorySection() {
   const userFacts = dialogueController.memory.user;
   const websiteFacts = dialogueController.memory.website;
+  const { userName, interests, lastVibe } = dialogueController.memory.profile;
   const lines = [];
+
+  lines.push("User profile:");
+  lines.push(`- Name: ${userName}`);
+  lines.push(`- Interests: ${interests.join(", ") || "none yet"}`);
+  lines.push(`- Last vibe: ${lastVibe || "none yet"}`);
 
   if (userFacts.length > 0) {
     lines.push("About the user:");
@@ -932,7 +1169,62 @@ function formatRecentTranscript() {
 function getMemorySummary() {
   const userCount = dialogueController.memory.user.length;
   const websiteCount = dialogueController.memory.website.length;
-  return `${userCount} user fact${userCount === 1 ? "" : "s"}, ${websiteCount} website fact${websiteCount === 1 ? "" : "s"}`;
+  const interestCount = dialogueController.memory.profile.interests.length;
+  const contextCount = dialogueController.messages.filter(
+    (message) => message.role === "user" || message.role === "assistant"
+  ).length;
+  return `${userCount} user fact${userCount === 1 ? "" : "s"}, ${websiteCount} website fact${websiteCount === 1 ? "" : "s"}, ${interestCount} interest${interestCount === 1 ? "" : "s"}, ${Math.min(contextCount, PERSISTED_CONTEXT_LINES)} context line${contextCount === 1 ? "" : "s"}`;
+}
+
+function clearAllCompanionMemory() {
+  dialogueController.memory = { user: [], website: [], profile: getDefaultUserProfile() };
+  dialogueController.messages = [];
+  localStorage.removeItem(COMPANION_MEMORY_STORAGE_KEY);
+  localStorage.removeItem(COMPANION_CONTEXT_STORAGE_KEY);
+  renderDialogueHistory();
+}
+
+function getStoredMetadataSnapshot() {
+  return {
+    privacy: "Stored locally in this browser. Sent only to the local Ollama endpoint when relevant.",
+    storageKeys: {
+      memory: COMPANION_MEMORY_STORAGE_KEY,
+      context: COMPANION_CONTEXT_STORAGE_KEY
+    },
+    limits: {
+      contextLines: PERSISTED_CONTEXT_LINES,
+      recentTranscriptLinesSentToOllama: RECENT_TRANSCRIPT_LINES
+    },
+    profile: { ...dialogueController.memory.profile },
+    userFacts: [...dialogueController.memory.user],
+    websiteFacts: [...dialogueController.memory.website],
+    contextLog: dialogueController.messages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-PERSISTED_CONTEXT_LINES)
+  };
+}
+
+function renderStoredMetadata() {
+  memoryMetadataContent.textContent = JSON.stringify(getStoredMetadataSnapshot(), null, 2);
+}
+
+function openMemoryDialog() {
+  renderStoredMetadata();
+  if (typeof memoryDialog.showModal === "function") {
+    memoryDialog.showModal();
+    return;
+  }
+
+  memoryDialog.setAttribute("open", "");
+}
+
+function closeStoredMemoryDialog() {
+  if (typeof memoryDialog.close === "function") {
+    memoryDialog.close();
+    return;
+  }
+
+  memoryDialog.removeAttribute("open");
 }
 
 function getSelectedControllerLabel(controller, fallback) {
@@ -972,12 +1264,20 @@ function handleMemoryCommand(prompt) {
   const command = prompt.match(/^\/(\w+)(?:\s+([\s\S]+))?$/);
   const naturalRemember = prompt.match(/^remember(?:\s+that)?\s+([\s\S]+)$/i);
   const naturalTeach = prompt.match(/^(?:learn|teach)(?:\s+that)?\s+([\s\S]+)$/i);
+  const naturalName = prompt.match(/^(?:my name is|call me)\s+([\s\S]+)$/i);
+  const naturalVibe = prompt.match(/^(?:i feel|i'm feeling|i am feeling|my vibe is|my mood is|mood is|vibe is)\s+([\s\S]+)$/i);
 
   if (naturalRemember) {
     return handleMemoryCommand(`/remember ${naturalRemember[1]}`);
   }
   if (naturalTeach) {
     return handleMemoryCommand(`/teach ${naturalTeach[1]}`);
+  }
+  if (naturalName) {
+    return handleMemoryCommand(`/name ${naturalName[1]}`);
+  }
+  if (naturalVibe) {
+    return handleMemoryCommand(`/vibe ${naturalVibe[1]}`);
   }
   if (!command) {
     return false;
@@ -1006,6 +1306,46 @@ function handleMemoryCommand(prompt) {
     return true;
   }
 
+  if (name === "name") {
+    if (!setUserName(value)) {
+      addDialogueLine("system", "Usage: /name your name");
+      return true;
+    }
+    addDialogueLine("system", `name saved: ${dialogueController.memory.profile.userName}`);
+    showSpeechPhrase("I'll remember your name.");
+    return true;
+  }
+
+  if (name === "interest" || name === "interests") {
+    const interests = splitProfileItems(value);
+    if (interests.length === 0) {
+      addDialogueLine("system", "Usage: /interest modular synths, arcade games");
+      return true;
+    }
+    interests.forEach(rememberInterest);
+    addDialogueLine("system", `interests saved: ${dialogueController.memory.profile.interests.join(", ")}`);
+    showSpeechPhrase("I added that to your interests.");
+    return true;
+  }
+
+  if (name === "vibe" || name === "mood") {
+    if (!setLastVibe(value)) {
+      addDialogueLine("system", "Usage: /vibe creative");
+      return true;
+    }
+    addDialogueLine("system", `vibe saved: ${dialogueController.memory.profile.lastVibe}`);
+    showSpeechPhrase("I'll keep that vibe in mind.");
+    return true;
+  }
+
+  if (name === "profile") {
+    const { userName, interests, lastVibe } = dialogueController.memory.profile;
+    addDialogueLine("system", `profile name: ${userName}`);
+    addDialogueLine("system", `profile interests: ${interests.join(", ") || "none yet"}`);
+    addDialogueLine("system", `profile vibe: ${lastVibe || "none yet"}`);
+    return true;
+  }
+
   if (name === "memory") {
     addDialogueLine("system", `${getMemorySummary()}`);
     formatMemorySection().split("\n").forEach((line) => {
@@ -1022,10 +1362,9 @@ function handleMemoryCommand(prompt) {
   }
 
   if (name === "forget") {
-    dialogueController.memory = { user: [], website: [] };
-    saveCompanionMemory();
-    addDialogueLine("system", "memory cleared");
-    showSpeechPhrase("I cleared my saved notes.");
+    clearAllCompanionMemory();
+    addDialogueLine("system", "all local memory cleared");
+    showSpeechPhrase("I cleared the local memory.");
     return true;
   }
 
@@ -1051,11 +1390,14 @@ function renderDialogueHistory() {
 
 function addDialogueLine(role, content) {
   dialogueController.messages.push({ role, content });
+  if (role === "user" || role === "assistant") {
+    saveCompanionContext();
+  }
   renderDialogueHistory();
 }
 
 function shouldIncludeSavedMemory(prompt) {
-  return /\b(?:remember|memory|know about me|about me|my favorite|my name|i like|i prefer|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
+  return /\b(?:remember|memory|know about me|about me|my favorite|my name|name|interest|interests|i like|i prefer|vibe|mood|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
 }
 
 function getCurrentTurnGuidance(prompt) {
@@ -1128,11 +1470,11 @@ async function submitDialoguePrompt(prompt) {
     return;
   }
 
-  if (/^\/\w+/.test(trimmedPrompt) || /^(?:remember|learn|teach)(?:\s+that)?\s+/i.test(trimmedPrompt)) {
+  if (/^\/\w+/.test(trimmedPrompt) || /^(?:remember|learn|teach)(?:\s+that)?\s+/i.test(trimmedPrompt) || /^(?:my name is|call me|i feel|i'm feeling|i am feeling|my vibe is|my mood is|mood is|vibe is)\s+/i.test(trimmedPrompt)) {
     dialogueInput.value = "";
     addDialogueLine("user", trimmedPrompt);
     if (!handleMemoryCommand(trimmedPrompt)) {
-      addDialogueLine("system", "Unknown command. Try /remember, /teach, /memory, /appearance, or /forget.");
+      addDialogueLine("system", "Unknown command. Try /name, /interest, /vibe, /remember, /teach, /memory, /profile, /appearance, or /forget.");
     }
     return;
   }
@@ -1141,6 +1483,7 @@ async function submitDialoguePrompt(prompt) {
   dialogueInput.value = "";
   dialogueInput.disabled = true;
   dialogueForm.querySelector("button").disabled = true;
+  await learnProfileFromPrompt(trimmedPrompt);
   addDialogueLine("user", trimmedPrompt);
   addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
 
@@ -1979,6 +2322,11 @@ function populateOutfitMorphSelect(mesh) {
 
 function setBlinkWeight(weight) {
   blinkController.targets.forEach((target) => {
+    if (target.expressionName && activeVrm?.expressionManager) {
+      activeVrm.expressionManager.setValue(target.expressionName, weight);
+      return;
+    }
+
     target.object.morphTargetInfluences[target.index] = weight;
   });
   document.documentElement.dataset.blinkWeight = weight > 0.001 ? weight.toFixed(2) : "0";
@@ -1995,26 +2343,36 @@ function startBlink() {
   blinkController.doubleBlinkQueued = Math.random() < 0.12;
 }
 
-function configureBlink(mesh) {
+function configureBlink(mesh, vrm = null) {
   const targets = [];
+  const blinkExpression = vrm?.expressionManager?.expressionMap?.[VRM_BLINK_EXPRESSION_NAME];
 
-  mesh.traverse((object) => {
-    if (!object.morphTargetDictionary || !object.morphTargetInfluences) {
-      return;
-    }
+  if (blinkExpression) {
+    targets.push({
+      name: VRM_BLINK_EXPRESSION_NAME,
+      expressionName: VRM_BLINK_EXPRESSION_NAME
+    });
+  }
 
-    const morphName = BLINK_MORPH_NAMES.find(
-      (name) => object.morphTargetDictionary[name] !== undefined
-    );
+  if (targets.length === 0) {
+    mesh.traverse((object) => {
+      if (!object.morphTargetDictionary || !object.morphTargetInfluences) {
+        return;
+      }
 
-    if (morphName) {
-      targets.push({
-        object,
-        name: morphName,
-        index: object.morphTargetDictionary[morphName]
-      });
-    }
-  });
+      const morphName = BLINK_MORPH_NAMES.find(
+        (name) => object.morphTargetDictionary[name] !== undefined
+      );
+
+      if (morphName) {
+        targets.push({
+          object,
+          name: morphName,
+          index: object.morphTargetDictionary[morphName]
+        });
+      }
+    });
+  }
 
   blinkController.targets = targets;
   blinkController.clock = 0;
@@ -2745,7 +3103,7 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
     realDancer.rotation.y = Math.PI;
     realDancer.updateMatrixWorld(true);
   }
-  const blinkTargets = configureBlink(realDancer);
+  const blinkTargets = configureBlink(realDancer, activeVrm);
   populateEyeMorphSelect(realDancer, activeVrm);
   populateFaceEmoteSelect(activeVrm);
   populateOutfitMorphSelect(realDancer);
@@ -2854,8 +3212,8 @@ function render() {
     animateStage(elapsed);
   } else {
     updateLoadedModelMotion(animationDelta);
-    activeVrm?.update?.(animationDelta);
     updateBlink(animationDelta);
+    activeVrm?.update?.(animationDelta);
     applyModelPreviewLighting();
   }
   updateCamera(elapsed);
@@ -2912,6 +3270,30 @@ speechPhraseSelect.addEventListener("change", (event) => {
 dialogueForm.addEventListener("submit", (event) => {
   event.preventDefault();
   submitDialoguePrompt(dialogueInput.value);
+});
+
+clearMemoryButton.addEventListener("click", () => {
+  clearAllCompanionMemory();
+  addDialogueLine("system", "all local memory cleared");
+  if (memoryDialog.open) {
+    renderStoredMetadata();
+  }
+  showSpeechPhrase("I cleared the local memory.");
+  dialogueInput.focus();
+});
+
+viewMemoryButton.addEventListener("click", () => {
+  openMemoryDialog();
+});
+
+closeMemoryDialog.addEventListener("click", () => {
+  closeStoredMemoryDialog();
+});
+
+memoryDialog.addEventListener("click", (event) => {
+  if (event.target === memoryDialog) {
+    closeStoredMemoryDialog();
+  }
 });
 
 stageLightingSlider.addEventListener("input", (event) => {

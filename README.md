@@ -124,11 +124,18 @@ Start Ollama, run the app, and use the dialogue console at the top of the scene.
 
 The console supports lightweight local memory:
 
+- Profile and recent chat context are stored in this browser with `localStorage`.
+- The context log keeps the newest lines and purges the oldest as it grows.
+- `/name Shane` stores the user's name.
+- `/interest modular synths, arcade games` stores interests.
+- `/vibe creative` stores the current mood or vibe when one is provided.
+- `/profile` prints the saved profile.
 - `/remember I like concise answers` stores facts about the user.
 - `/teach The website has a pricing page` stores project or website facts.
 - `/memory` prints saved notes.
 - `/appearance` prints the current model, expression, motion, and scene snapshot sent to the AI.
-- `/forget` clears saved notes.
+- The console's `View memory` button opens the stored profile, facts, and context log.
+- `/forget` or the console's `Clear all memory` button clears all local memory and saved context.
 
 ---
 
