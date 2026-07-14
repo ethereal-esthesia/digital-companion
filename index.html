@@ -8,6 +8,7 @@
   <body>
     <main id="app">
       <canvas id="scene" aria-label="Neon MMD-style stage recreation"></canvas>
+      <div class="load-veil" id="loadVeil" aria-hidden="true"></div>
       <div class="speech-bubble" id="speechBubble" aria-live="polite">
         <span class="speech-bubble-trail" aria-hidden="true">
           <span></span>
@@ -18,25 +19,27 @@
         </span>
         <p id="speechText">Ready when you are.</p>
       </div>
-      <section class="dialogue-console" aria-label="Companion dialogue">
-        <div class="dialogue-privacy">
-          <span>Chats with the server are only saved locally.</span>
-          <div class="dialogue-memory-actions">
-            <button id="viewMemoryButton" type="button">View memory</button>
-            <button id="clearMemoryButton" type="button">Clear all memory</button>
-          </div>
-        </div>
-        <div class="dialogue-history" id="dialogueHistory" aria-live="polite"></div>
-        <form class="dialogue-form" id="dialogueForm">
-          <input id="dialogueInput" type="text" autocomplete="off" aria-label="Message companion" placeholder="/remember, /teach, or chat" />
-          <button type="submit">Send</button>
-        </form>
-      </section>
+      <div class="dialogue-stack">
+        <p class="dialogue-privacy">Demo chats with the server are stored in your browser.</p>
+        <section class="dialogue-console" aria-label="Companion dialogue">
+          <div class="dialogue-history" id="dialogueHistory" aria-live="polite"></div>
+          <form class="dialogue-form" id="dialogueForm">
+            <input id="dialogueInput" type="text" autocomplete="off" aria-label="Message companion" placeholder="/remember, /teach, or chat" />
+            <button class="memory-icon-button" id="viewMemoryButton" type="button" aria-label="View browser memory" title="View memory">
+              <span class="memory-icon" aria-hidden="true"></span>
+            </button>
+            <button class="dialogue-send-button" type="submit">Send</button>
+          </form>
+        </section>
+      </div>
       <dialog class="memory-dialog" id="memoryDialog" aria-labelledby="memoryDialogTitle">
         <div class="memory-dialog-panel">
           <div class="memory-dialog-header">
             <strong id="memoryDialogTitle">Stored memory</strong>
-            <button id="closeMemoryDialog" type="button" aria-label="Close memory view">Close</button>
+            <div class="memory-dialog-actions">
+              <button class="memory-clear-button" id="clearMemoryButton" type="button">Clear memory</button>
+              <button id="closeMemoryDialog" type="button" aria-label="Close memory view">Close</button>
+            </div>
           </div>
           <pre id="memoryMetadataContent"></pre>
         </div>

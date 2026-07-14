@@ -15,6 +15,8 @@ This is a working rights/usage audit for the assets credited by the source video
 | Model preset: `Sameko Saba / Fan Made 3D VRChat Avatar` | Paid/manual, local-only pending terms review | BOOTH download includes VRM/Unity/FBX/Blend/textures. Preserve locally, do not redistribute, and treat as personal/demo only until seller terms are reviewed. |
 | Motion/camera/facial: `GETCHA! - apr(社会の窓P)` | Restricted | Noncommercial MMD/MMD-derived-tool use appears allowed with credits. Direct Three.js/web use needs permission or clarification. |
 | Motion: `VRMA MotionPack` by VRoid Project | Local app playback allowed | Load from ignored local resources. Do not commit/bundle extractable `.vrma` files without a redistribution review. |
+| Motion: Mixamo-derived `.vrma` | Project use allowed, raw redistribution not cleared | Use locally from `motion/mixamo-vrma/`. Do not commit or expose raw converted `.vrma` files as public downloadable assets without a separate review. |
+| Motion dataset: CMU Motion Capture Database | Free to include in products | May be copied, modified, redistributed, and included in commercial products with attribution; do not resell the data directly, even in converted form. |
 | Music: `GETCHA!` by Giga/KIRA | No reuse license found | Do not bundle the recording or instrumental unless a clear license/permission is obtained. Link/reference only for now. |
 | Choreography: 足太ぺんた `GETCHA!` dance | Credit dependency | apr terms require crediting the choreography/trace source when using the motion. |
 | Node tree: `RC皮肤预设V402` | Terms not found in description | Download page is linked, but no explicit reuse/redistribution terms were found in the Bilibili description. Inspect bundled files. |
@@ -47,6 +49,29 @@ Sources:
 
 - https://booth.pm/items/5512385
 - Bundled `Readme_VRMA_MotionPack_EN.txt`
+
+### Mixamo-derived VRMA motions
+
+Adobe's Mixamo FAQ says Mixamo is free with an Adobe ID and that Mixamo characters and animations may be used royalty-free in personal, commercial, and non-profit projects, including films and video games.
+
+That is enough for local development and for using Mixamo-derived motion as integrated app/game/video content. It is not a clear standalone redistribution grant for raw `.fbx`, `.vrma`, or converted motion packs. In this app, public static `.vrma` files are directly fetchable, so converted Mixamo files should stay under ignored local resources unless a separate review clears that delivery model.
+
+Sources:
+
+- https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html
+- https://www.mixamo.com/
+
+### CMU Motion Capture Database
+
+The official CMU page allows inclusion of the data in commercially sold products and forbids reselling the data directly, even in converted form. The FAQ says the motion capture data may be copied, modified, or redistributed without permission. CMU requests attribution for published results.
+
+This makes CMU a better source for shippable motion data than Mixamo when we need raw downloadable web assets, provided the app is not just reselling a converted data pack and attribution is included.
+
+Sources:
+
+- http://mocap.cs.cmu.edu/
+- http://mocap.cs.cmu.edu/faqs.php
+- http://mocap.cs.cmu.edu/info.php
 
 ### Model
 

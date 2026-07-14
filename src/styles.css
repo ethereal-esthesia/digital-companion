@@ -43,6 +43,24 @@ body,
   cursor: grabbing;
 }
 
+.load-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: #ffffff;
+  opacity: 1;
+  pointer-events: none;
+  transition:
+    opacity 900ms ease,
+    visibility 0s linear 900ms;
+  visibility: visible;
+}
+
+.load-veil[data-state="ready"] {
+  opacity: 0;
+  visibility: hidden;
+}
+
 .speech-bubble {
   --speech-font-size: 23px;
   position: absolute;
@@ -178,15 +196,22 @@ body,
   line-height: 1.12;
 }
 
-.dialogue-console {
+.dialogue-stack {
   position: absolute;
   left: clamp(14px, 3vw, 34px);
   top: clamp(12px, 2.5vh, 26px);
   z-index: 4;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   width: clamp(290px, 42vw, 560px);
   max-width: calc(100vw - 28px);
+  pointer-events: auto;
+}
+
+.dialogue-console {
+  display: grid;
+  gap: 8px;
+  width: 100%;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -195,7 +220,6 @@ body,
     0 0 22px rgb(73 244 255 / 15%),
     inset 0 0 16px rgb(255 255 255 / 5%);
   color: white;
-  pointer-events: auto;
 }
 
 .dialogue-history {
@@ -229,27 +253,16 @@ body,
 }
 
 .dialogue-privacy {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  color: rgb(232 254 255 / 62%);
-  font-size: 10px;
-  font-weight: 750;
-  line-height: 1.2;
+  max-width: 100%;
+  margin: 0;
+  color: rgb(17 42 52 / 74%);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 72%);
 }
 
-.dialogue-privacy span {
-  min-width: 0;
-}
-
-.dialogue-memory-actions {
-  display: flex;
-  justify-content: end;
-  gap: 6px;
-}
-
-.dialogue-privacy button,
 .memory-dialog button,
 .profile-save-dialog button {
   min-width: 0;
@@ -265,13 +278,12 @@ body,
   line-height: 1;
 }
 
-.dialogue-privacy button:last-child {
+.memory-clear-button {
   border-color: rgb(255 117 151 / 42%);
   background: rgb(80 6 24 / 34%);
   color: rgb(255 226 235 / 92%);
 }
 
-.dialogue-privacy button:focus-visible,
 .memory-dialog button:focus-visible,
 .profile-save-dialog button:focus-visible,
 .profile-save-dialog input:focus-visible {
@@ -314,6 +326,12 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.memory-dialog-actions {
+  display: flex;
+  justify-content: end;
+  gap: 6px;
 }
 
 .memory-dialog-header strong,
@@ -383,7 +401,7 @@ body,
 
 .dialogue-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 68px;
+  grid-template-columns: minmax(0, 1fr) 34px 68px;
   gap: 8px;
 }
 
@@ -405,9 +423,57 @@ body,
   outline: 0;
 }
 
-.dialogue-form button {
+.dialogue-send-button {
   padding: 0;
   text-transform: uppercase;
+}
+
+.memory-icon-button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.memory-icon-button:hover {
+  border-color: rgb(151 251 255 / 58%);
+  background: rgb(73 244 255 / 12%);
+}
+
+.memory-icon {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  color: rgb(232 254 255 / 94%);
+}
+
+.memory-icon::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 1px;
+  width: 10px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  background:
+    linear-gradient(currentColor, currentColor) 3px 4px / 5px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 7px / 5px 1px no-repeat;
+  opacity: 0.9;
+}
+
+.memory-icon::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  width: 11px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: -5px 0 0 rgb(255 117 151 / 86%);
+  transform: rotate(-38deg);
+  transform-origin: 50% 50%;
 }
 
 .dialogue-form input:focus-visible,
@@ -1238,7 +1304,7 @@ body,
   animation-delay: -420ms;
 }
 
-html[data-app-mode="demo"] .dialogue-console {
+html[data-app-mode="demo"] .dialogue-stack {
   left: clamp(14px, 3vw, 34px);
   top: auto;
   bottom: clamp(14px, 3vh, 28px);
@@ -1308,7 +1374,7 @@ html[data-app-mode="demo"] .meter {
     display: none;
   }
 
-  .dialogue-console {
+  .dialogue-stack {
     width: min(52vw, 430px);
   }
 
@@ -1339,7 +1405,7 @@ html[data-app-mode="demo"] .meter {
     padding: 8px;
   }
 
-  .dialogue-console {
+  .dialogue-stack {
     left: 12px;
     width: calc(100vw - 24px);
   }
@@ -1351,19 +1417,7 @@ html[data-app-mode="demo"] .meter {
   }
 
   .dialogue-form {
-    grid-template-columns: minmax(0, 1fr) 58px;
-  }
-
-  .dialogue-privacy {
-    grid-template-columns: 1fr;
-  }
-
-  .dialogue-memory-actions {
-    justify-content: stretch;
-  }
-
-  .dialogue-memory-actions button {
-    flex: 1;
+    grid-template-columns: minmax(0, 1fr) 34px 58px;
   }
 
   .parameter-control,
@@ -1395,13 +1449,13 @@ html[data-app-mode="demo"] .meter {
   }
 }
 
-html[data-app-mode="demo"] .dialogue-console {
+html[data-app-mode="demo"] .dialogue-stack {
   top: auto;
   bottom: clamp(14px, 3vh, 28px);
 }
 
 @media (max-width: 480px) {
-  html[data-app-mode="demo"] .dialogue-console {
+  html[data-app-mode="demo"] .dialogue-stack {
     width: calc(100vw - 82px);
   }
 }

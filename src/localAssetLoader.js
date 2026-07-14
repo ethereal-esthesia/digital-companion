@@ -1,6 +1,7 @@
 const DEFAULT_CONFIG_URL = "/local-resources/original-video-assets/config.json";
 const FALLBACK_CONFIG_URL = "/resources/original-video-assets/config.example.json";
 const DISCOVERED_MODEL_PRESETS_URL = "/local-model-presets.json";
+const DISCOVERED_MOTION_PRESETS_URL = "/local-motion-presets.json";
 const DEMO_PROFILE_URL = "/demo-profile.json";
 
 const ASSET_ORDER = ["model", "stage", "motion", "camera", "facial", "audio"];
@@ -40,6 +41,15 @@ async function fetchDiscoveredModelPresets() {
   try {
     const discovered = await fetchJson(DISCOVERED_MODEL_PRESETS_URL);
     return Array.isArray(discovered.modelPresets) ? discovered.modelPresets : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchDiscoveredMotionPresets() {
+  try {
+    const discovered = await fetchJson(DISCOVERED_MOTION_PRESETS_URL);
+    return Array.isArray(discovered.motionPresets) ? discovered.motionPresets : [];
   } catch {
     return [];
   }
@@ -176,20 +186,46 @@ function normalizeModelPresets(scene, root, discoveredPresets = []) {
   ];
 }
 
-function normalizeMotionPresets(scene, root) {
+function normalizeMotionPresets(scene, root, discoveredPresets = []) {
   const configuredPresets = Array.isArray(scene?.motionPresets) ? scene.motionPresets : [];
+  const usedIds = new Set();
+  const usedPaths = new Set();
 
-  return configuredPresets.map((preset, index) => {
+  const normalizedConfigured = configuredPresets.map((preset, index) => {
     const normalized = normalizeAssetEntry("motionPreset", preset, root);
+    const presetId = preset.id || `motion-${index + 1}`;
+    usedIds.add(presetId);
+    usedPaths.add(normalized.path);
     return {
       ...normalized,
-      id: preset.id || `motion-${index + 1}`,
+      id: presetId,
       label: preset.label || preset.name || normalized.label || `Motion ${index + 1}`,
       sourceId: preset.sourceId || null,
       kind: preset.kind || normalized.kind || "vrma",
       required: Boolean(preset.required)
     };
   });
+
+  const normalizedDiscovered = discoveredPresets
+    .filter((preset) => preset?.path && !usedPaths.has(preset.path))
+    .map((preset, index) => {
+      const normalized = normalizeAssetEntry("motionPreset", preset, root);
+      const fallbackId = `local-motion-${index + 1}`;
+      const baseId = preset.id || fallbackId;
+      const id = usedIds.has(baseId) ? `${baseId}-${index + 1}` : baseId;
+      usedIds.add(id);
+      usedPaths.add(normalized.path);
+      return {
+        ...normalized,
+        id,
+        label: preset.label || preset.name || normalized.label || id,
+        sourceId: preset.sourceId || "local-motion-folder",
+        kind: preset.kind || normalized.kind || "vrma",
+        required: false
+      };
+    });
+
+  return [...normalizedConfigured, ...normalizedDiscovered];
 }
 
 function pickModelPreset(scene, modelPresets) {
@@ -269,8 +305,9 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
   const scene = pickScene(config);
   const root = config.assetRoot || "/local-resources/original-video-assets/";
   const discoveredModelPresets = await fetchDiscoveredModelPresets();
+  const discoveredMotionPresets = await fetchDiscoveredMotionPresets();
   const modelPresets = normalizeModelPresets(scene, root, discoveredModelPresets);
-  const motionPresets = normalizeMotionPresets(scene, root);
+  const motionPresets = normalizeMotionPresets(scene, root, discoveredMotionPresets);
   const requestedModelPreset = pickModelPreset(scene, modelPresets);
   const modelPresetResults = await Promise.all(
     modelPresets.map(async (preset) => {

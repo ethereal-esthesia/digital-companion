@@ -211,6 +211,8 @@ const trackedLicenseNotes = [
   "resources/original-video-assets/model/LICENSE_NOTES.md",
   "resources/original-video-assets/model/SAMEKO_SABA_LICENSE_NOTES.md",
   "resources/original-video-assets/motion/LICENSE_NOTES.md",
+  "resources/original-video-assets/motion/MIXAMO_VRMA_LICENSE_NOTES.md",
+  "resources/original-video-assets/motion/CMU_MOCAP_LICENSE_NOTES.md",
   "resources/original-video-assets/camera/LICENSE_NOTES.md",
   "resources/original-video-assets/facial/LICENSE_NOTES.md",
   "resources/original-video-assets/music/LICENSE_NOTES.md",

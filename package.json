@@ -14,6 +14,7 @@
     "demo:preview": "node scripts/run-demo.mjs --no-build",
     "preview": "vite --host 127.0.0.1",
     "resources:download": "node scripts/download-resources.mjs",
+    "resources:download:cmu": "node scripts/download-cmu-mocap.mjs",
     "resources:open-manual": "node scripts/download-resources.mjs --open-manual",
     "resources:import-textures": "node scripts/import-mmd-textures.mjs"
   },

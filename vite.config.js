@@ -6,7 +6,9 @@ import { defineConfig } from "vite";
 
 const LOCAL_ASSET_ROOT = "local-resources/original-video-assets";
 const AUTO_MODEL_FOLDER = "model/vrm-samples";
+const AUTO_MOTION_FOLDERS = ["motion/mixamo-vrma", "motion/vrma"];
 const MODEL_EXTENSIONS = new Set([".pmx", ".pmd", ".vrm"]);
+const MOTION_EXTENSIONS = new Set([".vrma"]);
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
 const DEMO_PROFILE_PATH = "public/demo-profile.json";
@@ -196,6 +198,69 @@ async function discoverModelPresets(rootDir) {
   return presets.filter(Boolean);
 }
 
+function formatMotionLabel(filePath) {
+  return path
+    .basename(filePath, path.extname(filePath))
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function findMotionFiles(folder) {
+  let entries;
+  try {
+    entries = await readdir(folder, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const files = [];
+  const sortedEntries = entries
+    .filter((entry) => !entry.name.startsWith("."))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const entry of sortedEntries) {
+    const fullPath = path.join(folder, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await findMotionFiles(fullPath));
+      continue;
+    }
+    if (entry.isFile() && MOTION_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+async function discoverMotionPresets(rootDir) {
+  const assetRoot = path.join(rootDir, LOCAL_ASSET_ROOT);
+  const discovered = [];
+
+  for (const folder of AUTO_MOTION_FOLDERS) {
+    const motionRoot = path.join(assetRoot, folder);
+    const sourceId = folder.includes("mixamo") ? "mixamo-vrma-local" : "local-vrma-folder";
+    const files = await findMotionFiles(motionRoot);
+
+    files.forEach((filePath, index) => {
+      const relativePath = toPosixPath(path.relative(assetRoot, filePath));
+      const relativeInFolder = toPosixPath(path.relative(motionRoot, filePath));
+      const idBase = slugify(relativeInFolder.replace(/\.[^.]+$/, "")) || String(index + 1);
+
+      discovered.push({
+        id: `${sourceId}-${idBase}`,
+        label: formatMotionLabel(filePath),
+        path: relativePath,
+        kind: "vrma",
+        required: false,
+        sourceId
+      });
+    });
+  }
+
+  return discovered;
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -344,6 +409,17 @@ function localModelPresetPlugin() {
           });
         }
       });
+      server.middlewares.use("/local-motion-presets.json", async (_request, response) => {
+        try {
+          const motionPresets = await discoverMotionPresets(server.config.root);
+          sendJson(response, 200, { motionPresets });
+        } catch (error) {
+          sendJson(response, 500, {
+            error: error instanceof Error ? error.message : "Motion discovery failed",
+            motionPresets: []
+          });
+        }
+      });
       server.middlewares.use("/ollama-chat", handleOllamaChat);
       server.middlewares.use((request, response, next) => {
         if (!isExactRequestPath(request, "/demo-profile")) {
@@ -369,6 +445,17 @@ function localModelPresetPlugin() {
           sendJson(response, 500, {
             error: error instanceof Error ? error.message : "Model discovery failed",
             modelPresets: []
+          });
+        }
+      });
+      server.middlewares.use("/local-motion-presets.json", async (_request, response) => {
+        try {
+          const motionPresets = await discoverMotionPresets(process.cwd());
+          sendJson(response, 200, { motionPresets });
+        } catch (error) {
+          sendJson(response, 500, {
+            error: error instanceof Error ? error.message : "Motion discovery failed",
+            motionPresets: []
           });
         }
       });

@@ -32,6 +32,7 @@ const dialogueForm = document.querySelector("#dialogueForm");
 const dialogueInput = document.querySelector("#dialogueInput");
 const clearMemoryButton = document.querySelector("#clearMemoryButton");
 const viewMemoryButton = document.querySelector("#viewMemoryButton");
+const loadVeil = document.querySelector("#loadVeil");
 const memoryDialog = document.querySelector("#memoryDialog");
 const closeMemoryDialog = document.querySelector("#closeMemoryDialog");
 const memoryMetadataContent = document.querySelector("#memoryMetadataContent");
@@ -817,8 +818,7 @@ function createDancer() {
 
 buildStage();
 buildModelPreview();
-const dancer = createDancer();
-activeDancer = dancer;
+stage.visible = false;
 
 const lookTarget = new THREE.Vector3(0, 2.1, 0);
 const orbitTarget = new THREE.Vector3();
@@ -1885,6 +1885,22 @@ function buildProceduralPose(mode, t) {
       rotation: toQuaternionArray(-0.18 + 0.02 * medium, 0, -0.08)
     }
   };
+
+  if (mode === "idle-breathe") {
+    pose.chest.rotation = toQuaternionArray(-0.02 + 0.014 * slow, 0, -0.006 * medium);
+    pose.neck.rotation = toQuaternionArray(0.018 * slow, 0.014 * medium, 0);
+    pose.head.rotation = toQuaternionArray(0.018 * slow, 0.024 * medium, 0.006 * slow);
+    pose.leftUpperArm.rotation = toQuaternionArray(0.72 + 0.018 * slow, 0.34, 1.08);
+    pose.leftLowerArm.rotation = toQuaternionArray(1.32 + 0.018 * medium, 1.78, 0.74);
+    pose.leftHand = {
+      rotation: toQuaternionArray(0.08, 0.16, -0.12)
+    };
+    pose.rightUpperArm.rotation = toQuaternionArray(0.72 + 0.018 * slow, -0.34, -1.08);
+    pose.rightLowerArm.rotation = toQuaternionArray(1.32 + 0.018 * medium, -1.78, -0.74);
+    pose.rightHand = {
+      rotation: toQuaternionArray(0.08, -0.16, 0.12)
+    };
+  }
 
   if (mode === "idle-look-around") {
     pose.neck.rotation = toQuaternionArray(0.04 * glance, 0.22 * headSweep, 0.02 * glance);
@@ -2955,6 +2971,12 @@ function updateModelAssetStatus() {
   `;
 }
 
+function finishInitialLoad() {
+  if (loadVeil) {
+    loadVeil.dataset.state = "ready";
+  }
+}
+
 function refreshModelPreview({ materials: refreshMaterials = false } = {}) {
   if (refreshMaterials && realDancer) {
     setModelMaterials(realDancer);
@@ -3434,7 +3456,6 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
   populateFaceEmoteSelect(activeVrm);
   populateOutfitMorphSelect(realDancer);
   scene.add(realDancer);
-  dancer.visible = false;
   stage.visible = false;
   modelPreview.visible = true;
   if (modelGuideLine) {
@@ -3533,10 +3554,7 @@ function render() {
   if (playing) {
     elapsed += delta;
   }
-  if (!realDancer) {
-    animateDancer(elapsed);
-    animateStage(elapsed);
-  } else {
+  if (realDancer) {
     updateLoadedModelMotion(animationDelta);
     updateBlink(animationDelta);
     activeVrm?.update?.(animationDelta);
@@ -3633,13 +3651,18 @@ dialogueForm.addEventListener("submit", (event) => {
 });
 
 clearMemoryButton.addEventListener("click", () => {
+  const memoryDialogWasOpen = memoryDialog.open;
   clearAllCompanionMemory();
   addDialogueLine("system", "all local memory cleared");
-  if (memoryDialog.open) {
+  if (memoryDialogWasOpen) {
     renderStoredMetadata();
   }
   showSpeechPhrase("I cleared the local memory.");
-  dialogueInput.focus();
+  if (memoryDialogWasOpen) {
+    clearMemoryButton.focus();
+  } else {
+    dialogueInput.focus();
+  }
 });
 
 viewMemoryButton.addEventListener("click", () => {
@@ -3726,6 +3749,10 @@ canvas.addEventListener("wheel", handleCameraWheelZoom, { passive: false });
 previewControls.addEventListener("wheel", handleCameraWheelZoom, { passive: false });
 
 canvas.addEventListener("dblclick", (event) => {
+  if (!activeDancer) {
+    return;
+  }
+
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
@@ -3766,6 +3793,9 @@ loadAssetConfig()
       <strong>0/0</strong>
       <small>${error instanceof Error ? error.message : "Config unavailable"}</small>
     `;
+  })
+  .finally(() => {
+    finishInitialLoad();
   });
 
 render();
