@@ -14,7 +14,7 @@
   "modelPreview": {
     "mode": "textured",
     "lighting": "native",
-    "motion": "vroid-greeting",
+    "motion": "idle-breathe",
     "stageLighting": 0.35,
     "materialBoostStrength": 0,
     "saturation": 0.72,
@@ -24,9 +24,9 @@
   },
   "motionPresets": [
     {
-      "id": "vroid-greeting",
-      "label": "Greeting",
-      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_02.vrma",
+      "id": "vroid-show-full-body",
+      "label": "Show full body",
+      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_01.vrma",
       "kind": "vrma",
       "required": true
     }

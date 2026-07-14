@@ -141,28 +141,12 @@ const STILL_MOTION_OPTION = {
   url: "",
   ok: true
 };
+const PROCEDURAL_BASE_MOTION_ID = "vroid-show-full-body";
+const BREATHE_LOOP_SECONDS = 4.2;
 const PROCEDURAL_MOTION_OPTIONS = [
   {
     id: "idle-breathe",
     label: "Idle breathe",
-    kind: "procedural",
-    ok: true
-  },
-  {
-    id: "idle-look-around",
-    label: "Look around",
-    kind: "procedural",
-    ok: true
-  },
-  {
-    id: "idle-look-distance",
-    label: "Look distant",
-    kind: "procedural",
-    ok: true
-  },
-  {
-    id: "idle-walk-in-place",
-    label: "Walk in place",
     kind: "procedural",
     ok: true
   }
@@ -273,7 +257,10 @@ const motionController = {
   status: "idle",
   error: "",
   configured: false,
-  proceduralTime: 0
+  proceduralTime: 0,
+  proceduralBasePose: null,
+  proceduralBasePoseKey: "",
+  proceduralBasePosePromise: null
 };
 const dialogueController = {
   messages: loadCompanionContext(),
@@ -1787,6 +1774,9 @@ function resetLoadedModelMotion({ resetExpressions = true } = {}) {
   motionController.status = "idle";
   motionController.error = "";
   motionController.proceduralTime = 0;
+  motionController.proceduralBasePose = null;
+  motionController.proceduralBasePoseKey = "";
+  motionController.proceduralBasePosePromise = null;
   activeVrm?.humanoid?.resetNormalizedPose?.();
 
   if (resetExpressions) {
@@ -1841,120 +1831,193 @@ function loadVrmAnimationClip(option) {
   });
 }
 
-function toQuaternionArray(x = 0, y = 0, z = 0) {
-  return new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, "XYZ")).toArray();
+function clonePoseTransform(transform = {}) {
+  const clone = {};
+
+  if (Array.isArray(transform.position)) {
+    clone.position = [...transform.position];
+  }
+
+  if (Array.isArray(transform.rotation)) {
+    clone.rotation = [...transform.rotation];
+  }
+
+  return clone;
 }
 
-function buildProceduralPose(mode, t) {
-  const slow = Math.sin(t * 1.15);
-  const medium = Math.sin(t * 2.1);
-  const step = Math.sin(t * 5.6);
-  const counterStep = Math.sin(t * 5.6 + Math.PI);
-  const headSweep = Math.sin(t * 0.62);
-  const glance = Math.sin(t * 1.35);
+function cloneNormalizedPose(pose = {}) {
+  return Object.fromEntries(
+    Object.entries(pose).map(([boneName, transform]) => [
+      boneName,
+      clonePoseTransform(transform)
+    ])
+  );
+}
 
-  const pose = {
-    hips: {
-      position: [0, 0.012 * slow, 0],
-      rotation: toQuaternionArray(0, 0.018 * slow, 0)
-    },
-    spine: {
-      rotation: toQuaternionArray(0.018 * slow, 0, 0.012 * medium)
-    },
-    chest: {
-      rotation: toQuaternionArray(-0.014 * slow, 0, -0.01 * medium)
-    },
-    upperChest: {
-      rotation: toQuaternionArray(-0.01 * slow, 0, -0.008 * medium)
-    },
-    neck: {
-      rotation: toQuaternionArray(0.025 * slow, 0.02 * medium, 0)
-    },
-    head: {
-      rotation: toQuaternionArray(0.02 * slow, 0.035 * medium, 0.008 * slow)
-    },
-    leftUpperArm: {
-      rotation: toQuaternionArray(0.08 + 0.025 * slow, 0.06, 1.22)
-    },
-    leftLowerArm: {
-      rotation: toQuaternionArray(-0.18 + 0.02 * medium, 0, 0.08)
-    },
-    rightUpperArm: {
-      rotation: toQuaternionArray(0.08 + 0.025 * slow, -0.06, -1.22)
-    },
-    rightLowerArm: {
-      rotation: toQuaternionArray(-0.18 + 0.02 * medium, 0, -0.08)
+function getProceduralBaseMotionOption() {
+  const option = getMotionModeOption(PROCEDURAL_BASE_MOTION_ID);
+  return option.id === PROCEDURAL_BASE_MOTION_ID && option.url ? option : null;
+}
+
+async function sampleMotionFirstFramePose(option) {
+  if (!activeVrm?.scene || !activeVrm?.humanoid?.getNormalizedPose) {
+    return {};
+  }
+
+  const clip = await loadVrmAnimationClip(option);
+  const previousPose = cloneNormalizedPose(activeVrm.humanoid.getNormalizedPose());
+  const mixer = new THREE.AnimationMixer(activeVrm.scene);
+  const action = mixer.clipAction(clip);
+
+  try {
+    activeVrm.humanoid.resetNormalizedPose?.();
+    action.reset();
+    action.play();
+    mixer.setTime(0);
+    activeVrm.update?.(0);
+    return cloneNormalizedPose(activeVrm.humanoid.getNormalizedPose());
+  } finally {
+    action.stop();
+    mixer.stopAllAction();
+    mixer.uncacheRoot(activeVrm.scene);
+    activeVrm.humanoid.resetNormalizedPose?.();
+    activeVrm.humanoid.setNormalizedPose?.(previousPose);
+    activeVrm.update?.(0);
+  }
+}
+
+async function loadProceduralBasePose() {
+  const option = getProceduralBaseMotionOption();
+  const key = `${activeVrm?.scene?.uuid || "none"}:${option?.id || "rest"}`;
+
+  if (motionController.proceduralBasePoseKey === key && motionController.proceduralBasePose) {
+    return motionController.proceduralBasePose;
+  }
+
+  if (motionController.proceduralBasePoseKey === key && motionController.proceduralBasePosePromise) {
+    return motionController.proceduralBasePosePromise;
+  }
+
+  motionController.proceduralBasePoseKey = key;
+  const basePosePromise = option
+    ? sampleMotionFirstFramePose(option)
+    : Promise.resolve({});
+  motionController.proceduralBasePosePromise = basePosePromise;
+
+  try {
+    const basePose = await basePosePromise;
+    if (motionController.proceduralBasePoseKey === key) {
+      motionController.proceduralBasePose = basePose;
     }
-  };
+    return basePose;
+  } finally {
+    if (motionController.proceduralBasePosePromise === basePosePromise) {
+      motionController.proceduralBasePosePromise = null;
+    }
+  }
+}
 
-  if (mode === "idle-breathe") {
-    pose.chest.rotation = toQuaternionArray(-0.02 + 0.014 * slow, 0, -0.006 * medium);
-    pose.neck.rotation = toQuaternionArray(0.018 * slow, 0.014 * medium, 0);
-    pose.head.rotation = toQuaternionArray(0.018 * slow, 0.024 * medium, 0.006 * slow);
-    pose.leftUpperArm.rotation = toQuaternionArray(0.72 + 0.018 * slow, 0.34, 1.08);
-    pose.leftLowerArm.rotation = toQuaternionArray(1.32 + 0.018 * medium, 1.78, 0.74);
-    pose.leftHand = {
-      rotation: toQuaternionArray(0.08, 0.16, -0.12)
-    };
-    pose.rightUpperArm.rotation = toQuaternionArray(0.72 + 0.018 * slow, -0.34, -1.08);
-    pose.rightLowerArm.rotation = toQuaternionArray(1.32 + 0.018 * medium, -1.78, -0.74);
-    pose.rightHand = {
-      rotation: toQuaternionArray(0.08, -0.16, 0.12)
-    };
+function ensurePoseTransform(pose, boneName) {
+  if (!pose[boneName]) {
+    pose[boneName] = {};
   }
 
-  if (mode === "idle-look-around") {
-    pose.neck.rotation = toQuaternionArray(0.04 * glance, 0.22 * headSweep, 0.02 * glance);
-    pose.head.rotation = toQuaternionArray(0.03 * glance, 0.32 * headSweep, -0.025 * headSweep);
-    pose.chest.rotation = toQuaternionArray(-0.01 * slow, 0.04 * headSweep, -0.01 * medium);
+  return pose[boneName];
+}
+
+function addPosePositionDelta(pose, boneName, x = 0, y = 0, z = 0) {
+  const transform = ensurePoseTransform(pose, boneName);
+  const position = transform.position || [0, 0, 0];
+  transform.position = [
+    position[0] + x,
+    position[1] + y,
+    position[2] + z
+  ];
+}
+
+function addPoseRotationDelta(pose, boneName, x = 0, y = 0, z = 0) {
+  const transform = ensurePoseTransform(pose, boneName);
+  const rotation = new THREE.Quaternion();
+
+  if (Array.isArray(transform.rotation)) {
+    rotation.fromArray(transform.rotation);
   }
 
-  if (mode === "idle-look-distance") {
-    pose.hips.rotation = toQuaternionArray(0, -0.08 + 0.018 * slow, 0);
-    pose.spine.rotation = toQuaternionArray(-0.02 + 0.01 * slow, -0.06, 0.01 * medium);
-    pose.chest.rotation = toQuaternionArray(-0.045 + 0.012 * slow, -0.08, -0.008 * medium);
-    pose.neck.rotation = toQuaternionArray(-0.09 + 0.02 * slow, -0.16 + 0.025 * glance, 0.015);
-    pose.head.rotation = toQuaternionArray(-0.1 + 0.025 * slow, -0.24 + 0.045 * glance, 0.02);
-    pose.leftUpperArm.rotation = toQuaternionArray(0.08 + 0.02 * slow, 0.04, 1.18);
-    pose.rightUpperArm.rotation = toQuaternionArray(0.08 + 0.02 * slow, -0.04, -1.16);
+  rotation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, "XYZ")));
+  transform.rotation = rotation.toArray();
+}
+
+function getLoopSine(t, duration) {
+  const phase = ((t % duration) + duration) % duration;
+  return Math.sin((phase / duration) * Math.PI * 2);
+}
+
+function advanceLoopTime(t, delta, duration) {
+  if (delta <= 0) {
+    return t;
   }
 
-  if (mode === "idle-walk-in-place") {
-    pose.hips.position = [0, 0.045 + Math.abs(step) * 0.025, 0];
-    pose.hips.rotation = toQuaternionArray(0.015 * step, 0.035 * slow, 0.025 * step);
-    pose.spine.rotation = toQuaternionArray(-0.035 * step, 0, -0.025 * step);
-    pose.chest.rotation = toQuaternionArray(0.025 * step, 0, 0.018 * step);
-    pose.neck.rotation = toQuaternionArray(0.03 * slow, 0.035 * medium, 0);
-    pose.head.rotation = toQuaternionArray(0.018 * slow, 0.045 * medium, -0.01 * step);
-    pose.leftUpperLeg = {
-      rotation: toQuaternionArray(0.42 * step, 0, 0.035)
-    };
-    pose.leftLowerLeg = {
-      rotation: toQuaternionArray(-0.28 * Math.max(0, step), 0, 0)
-    };
-    pose.leftFoot = {
-      rotation: toQuaternionArray(0.1 * Math.max(0, counterStep), 0, 0)
-    };
-    pose.rightUpperLeg = {
-      rotation: toQuaternionArray(0.42 * counterStep, 0, -0.035)
-    };
-    pose.rightLowerLeg = {
-      rotation: toQuaternionArray(-0.28 * Math.max(0, counterStep), 0, 0)
-    };
-    pose.rightFoot = {
-      rotation: toQuaternionArray(0.1 * Math.max(0, step), 0, 0)
-    };
-    pose.leftUpperArm.rotation = toQuaternionArray(-0.22 * counterStep, 0.04, 1.12);
-    pose.leftLowerArm = {
-      rotation: toQuaternionArray(-0.16 + 0.08 * step, 0, 0)
-    };
-    pose.rightUpperArm.rotation = toQuaternionArray(-0.22 * step, -0.04, -1.12);
-    pose.rightLowerArm = {
-      rotation: toQuaternionArray(-0.16 + 0.08 * counterStep, 0, 0)
-    };
-  }
+  const nextTime = t + delta;
+  return nextTime >= duration ? 0 : nextTime;
+}
+
+function buildBreathePose(basePose, t) {
+  const pose = cloneNormalizedPose(basePose);
+  const breath = 0.5 * getLoopSine(t, BREATHE_LOOP_SECONDS);
+  const torsoLift = breath;
+  const clavicleRoll = breath;
+  const armDrift = 0.18 * breath;
+
+  addPosePositionDelta(pose, "hips", 0, -0.002 * torsoLift, 0);
+  addPosePositionDelta(pose, "upperChest", 0, 0.006 * torsoLift, 0.002 * breath);
+  addPosePositionDelta(pose, "neck", 0, 0.0015 * torsoLift, 0);
+  addPosePositionDelta(pose, "head", 0, 0.002 * torsoLift, 0);
+  addPosePositionDelta(pose, "leftShoulder", 0, 0.002 * torsoLift, 0);
+  addPosePositionDelta(pose, "rightShoulder", 0, 0.002 * torsoLift, 0);
+
+  addPoseRotationDelta(pose, "spine", THREE.MathUtils.degToRad(-0.3 * breath), 0, 0);
+  addPoseRotationDelta(pose, "chest", THREE.MathUtils.degToRad(-0.8 * breath), 0, 0);
+  addPoseRotationDelta(pose, "upperChest", THREE.MathUtils.degToRad(-2.2 * breath), 0, 0);
+  addPoseRotationDelta(pose, "neck", THREE.MathUtils.degToRad(0.3 * breath), 0, 0);
+  addPoseRotationDelta(pose, "head", THREE.MathUtils.degToRad(0.15 * breath), 0, 0);
+  addPoseRotationDelta(
+    pose,
+    "leftShoulder",
+    0,
+    THREE.MathUtils.degToRad(-0.25 * armDrift),
+    THREE.MathUtils.degToRad(0.8 * clavicleRoll)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightShoulder",
+    0,
+    THREE.MathUtils.degToRad(0.25 * armDrift),
+    THREE.MathUtils.degToRad(-0.8 * clavicleRoll)
+  );
+  addPoseRotationDelta(
+    pose,
+    "leftUpperArm",
+    0,
+    THREE.MathUtils.degToRad(-0.5 * armDrift),
+    THREE.MathUtils.degToRad(0.35 * armDrift)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightUpperArm",
+    0,
+    THREE.MathUtils.degToRad(0.5 * armDrift),
+    THREE.MathUtils.degToRad(-0.35 * armDrift)
+  );
 
   return pose;
+}
+
+function buildProceduralPose(mode, t, basePose = {}) {
+  if (mode === "idle-breathe") {
+    return buildBreathePose(basePose, t);
+  }
+
+  return cloneNormalizedPose(basePose);
 }
 
 function applyProceduralVrmMotion(delta) {
@@ -1963,10 +2026,18 @@ function applyProceduralVrmMotion(delta) {
     return false;
   }
 
-  motionController.proceduralTime += delta;
+  if (!motionController.proceduralBasePose) {
+    return true;
+  }
+
+  motionController.proceduralTime = advanceLoopTime(
+    motionController.proceduralTime,
+    delta,
+    BREATHE_LOOP_SECONDS
+  );
   activeVrm.humanoid.resetNormalizedPose?.();
   activeVrm.humanoid.setNormalizedPose?.(
-    buildProceduralPose(option.id, motionController.proceduralTime)
+    buildProceduralPose(option.id, motionController.proceduralTime, motionController.proceduralBasePose)
   );
   motionController.status = "playing";
   motionController.error = "";
@@ -1978,9 +2049,40 @@ async function applyLoadedModelMotion() {
   resetLoadedModelMotion();
 
   if (isProceduralMotionOption(option) && activeVrm?.humanoid) {
-    motionController.status = "playing";
+    motionController.status = "loading";
     motionController.error = "";
-    refreshModelPreview();
+    const loadingId = `${option.id}:${performance.now()}`;
+    motionController.loadingId = loadingId;
+    updateLocalModelDebug();
+    updateModelAssetStatus();
+
+    try {
+      const basePose = await loadProceduralBasePose();
+      if (motionController.loadingId !== loadingId || modelPreviewOptions.motion !== option.id) {
+        return;
+      }
+
+      motionController.proceduralBasePose = basePose;
+      activeVrm.humanoid.resetNormalizedPose?.();
+      activeVrm.humanoid.setNormalizedPose?.(buildProceduralPose(option.id, 0, basePose));
+      motionController.status = "playing";
+      motionController.error = "";
+    } catch (error) {
+      if (motionController.loadingId !== loadingId) {
+        return;
+      }
+      motionController.status = "error";
+      motionController.error = error instanceof Error ? error.message : "Procedural base pose failed to load";
+      console.warn(motionController.error);
+      modelPreviewOptions.motion = STILL_MOTION_ID;
+      setPreviewUrlParam("motion", STILL_MOTION_ID);
+      resetLoadedModelMotion();
+    } finally {
+      if (motionController.loadingId === loadingId) {
+        motionController.loadingId = null;
+      }
+      refreshModelPreview();
+    }
     return;
   }
 
@@ -2154,12 +2256,17 @@ async function saveDemoProfile(configurationName = demoConfigurationName) {
   demoConfigurationName = normalizeDemoConfigurationName(configurationName);
   const selectedPreset = localAssetState?.selectedModelPreset || null;
   const selectedMotion = getMotionModeOption(modelPreviewOptions.motion);
-  const motionPresets = selectedMotion?.kind === "vrma"
+  const requiredMotion = selectedMotion?.kind === "vrma"
+    ? selectedMotion
+    : isProceduralMotionOption(selectedMotion)
+      ? getProceduralBaseMotionOption()
+      : null;
+  const motionPresets = requiredMotion?.path
     ? [{
-        id: selectedMotion.id,
-        label: selectedMotion.label,
-        path: selectedMotion.path,
-        kind: selectedMotion.kind,
+        id: requiredMotion.id,
+        label: requiredMotion.label,
+        path: requiredMotion.path,
+        kind: requiredMotion.kind,
         required: true
       }]
     : [];
