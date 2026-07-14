@@ -30,6 +30,7 @@ const speechText = document.querySelector("#speechText");
 const dialogueHistory = document.querySelector("#dialogueHistory");
 const dialogueForm = document.querySelector("#dialogueForm");
 const dialogueInput = document.querySelector("#dialogueInput");
+const dialogueSendButton = document.querySelector(".dialogue-send-button");
 const clearMemoryButton = document.querySelector("#clearMemoryButton");
 const viewMemoryButton = document.querySelector("#viewMemoryButton");
 const loadVeil = document.querySelector("#loadVeil");
@@ -1552,7 +1553,7 @@ async function submitDialoguePrompt(prompt) {
   dialogueController.pending = true;
   dialogueInput.value = "";
   dialogueInput.disabled = true;
-  dialogueForm.querySelector("button").disabled = true;
+  dialogueSendButton.disabled = true;
   await learnProfileFromPrompt(trimmedPrompt);
   addDialogueLine("user", trimmedPrompt);
   addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
@@ -1579,7 +1580,7 @@ async function submitDialoguePrompt(prompt) {
   } finally {
     dialogueController.pending = false;
     dialogueInput.disabled = false;
-    dialogueForm.querySelector("button").disabled = false;
+    dialogueSendButton.disabled = false;
     dialogueInput.focus();
   }
 }

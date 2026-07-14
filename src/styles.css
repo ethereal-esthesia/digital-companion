@@ -213,13 +213,13 @@ body,
   gap: 8px;
   width: 100%;
   padding: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid rgb(92 169 211 / 42%);
   border-radius: 8px;
-  background: var(--panel-stable);
+  background: rgb(182 224 248 / 34%);
   box-shadow:
-    0 0 22px rgb(73 244 255 / 15%),
-    inset 0 0 16px rgb(255 255 255 / 5%);
-  color: white;
+    0 0 22px rgb(73 172 220 / 14%),
+    inset 0 0 16px rgb(255 255 255 / 12%);
+  color: rgb(44 92 123 / 92%);
 }
 
 .dialogue-history {
@@ -229,7 +229,7 @@ body,
   min-height: 74px;
   max-height: 126px;
   overflow: auto;
-  color: rgb(232 254 255 / 92%);
+  color: rgb(61 111 140 / 88%);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   font-weight: 700;
@@ -241,26 +241,27 @@ body,
 }
 
 .dialogue-line[data-speaker="user"] {
-  color: rgb(255 218 246 / 94%);
+  color: rgb(88 101 155 / 88%);
 }
 
 .dialogue-line[data-speaker="assistant"] {
-  color: rgb(188 251 255 / 96%);
+  color: rgb(38 110 150 / 92%);
 }
 
 .dialogue-line[data-speaker="system"] {
-  color: rgb(255 255 255 / 68%);
+  color: rgb(76 104 122 / 76%);
 }
 
 .dialogue-privacy {
   max-width: 100%;
   margin: 0;
-  color: rgb(17 42 52 / 74%);
+  color: rgb(112 119 126 / 88%);
   font-size: 11px;
   font-weight: 850;
   line-height: 1.18;
   overflow-wrap: anywhere;
-  text-shadow: 0 1px 0 rgb(255 255 255 / 72%);
+  text-align: center;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 44%);
 }
 
 .memory-dialog button,
@@ -409,10 +410,10 @@ body,
 .dialogue-form button {
   min-width: 0;
   height: 32px;
-  border: 1px solid rgb(146 249 255 / 36%);
+  border: 1px solid rgb(82 156 201 / 42%);
   border-radius: 8px;
-  background: var(--panel-clear);
-  color: white;
+  background: rgb(177 220 246 / 38%);
+  color: rgb(37 86 124 / 94%);
   font: inherit;
   font-size: 12px;
   font-weight: 800;
@@ -421,6 +422,14 @@ body,
 .dialogue-form input {
   padding: 0 10px;
   outline: 0;
+}
+
+.dialogue-form input::placeholder {
+  color: rgb(81 128 157 / 62%);
+}
+
+html[data-app-mode="demo"] .dialogue-form input::placeholder {
+  color: rgb(96 144 174 / 54%);
 }
 
 .dialogue-send-button {
@@ -435,8 +444,8 @@ body,
 }
 
 .memory-icon-button:hover {
-  border-color: rgb(151 251 255 / 58%);
-  background: rgb(73 244 255 / 12%);
+  border-color: rgb(78 166 216 / 58%);
+  background: rgb(144 208 242 / 24%);
 }
 
 .memory-icon {
@@ -444,7 +453,7 @@ body,
   display: block;
   width: 18px;
   height: 18px;
-  color: rgb(232 254 255 / 94%);
+  color: rgb(40 101 142 / 92%);
 }
 
 .memory-icon::before {
