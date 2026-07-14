@@ -12,7 +12,7 @@ import {
   createVRMAnimationClip
 } from "@pixiv/three-vrm-animation";
 import { MMDLoader } from "three-stdlib";
-import { loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
+import { loadDemoAssetConfig, loadLocalAssetConfig, renderAssetStatus } from "./localAssetLoader.js";
 
 const canvas = document.querySelector("#scene");
 const togglePlay = document.querySelector("#togglePlay");
@@ -39,6 +39,11 @@ const stageLightingSlider = document.querySelector("#stageLighting");
 const modelBloomSlider = document.querySelector("#modelBloom");
 const materialBoostStrengthSlider = document.querySelector("#materialBoostStrength");
 const modelSaturationSlider = document.querySelector("#modelSaturation");
+const saveDemoProfileButton = document.querySelector("#saveDemoProfileButton");
+const profileSaveDialog = document.querySelector("#profileSaveDialog");
+const profileSaveForm = document.querySelector("#profileSaveForm");
+const profileSaveNameInput = document.querySelector("#profileSaveNameInput");
+const cancelProfileSaveButton = document.querySelector("#cancelProfileSaveButton");
 const previewValueOutputs = new Map(
   [...document.querySelectorAll("[data-value-for]")].map((output) => [
     output.dataset.valueFor,
@@ -48,6 +53,16 @@ const previewValueOutputs = new Map(
 const previewOptionButtons = [...document.querySelectorAll("[data-option-group]")];
 const assetStatus = document.querySelector("#assetStatus");
 const queryParams = new URLSearchParams(window.location.search);
+const APP_MODES = new Set(["admin", "demo"]);
+const appMode = document.documentElement.dataset.entry === "demo" ||
+  window.location.pathname.endsWith("/demo.html")
+  ? "demo"
+  : APP_MODES.has(queryParams.get("mode"))
+    ? queryParams.get("mode")
+    : "admin";
+let demoConfigurationName = normalizeDemoConfigurationName(
+  queryParams.get("config") || queryParams.get("profile") || "default"
+);
 
 const DEFAULT_MODEL_PREVIEW_OPTIONS = {
   mode: "textured",
@@ -75,6 +90,7 @@ const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
 const COMPANION_MEMORY_STORAGE_KEY = "digitalCompanion.vitaMemory";
 const COMPANION_CONTEXT_STORAGE_KEY = "digitalCompanion.contextLog";
+const DEMO_PROFILE_STORAGE_KEY = "digitalCompanion.demoProfile";
 const RECENT_TRANSCRIPT_LINES = 20;
 const PERSISTED_CONTEXT_LINES = 40;
 const DEFAULT_USER_PROFILE = {
@@ -123,8 +139,61 @@ const STILL_MOTION_OPTION = {
   url: "",
   ok: true
 };
+const PROCEDURAL_MOTION_OPTIONS = [
+  {
+    id: "idle-breathe",
+    label: "Idle breathe",
+    kind: "procedural",
+    ok: true
+  },
+  {
+    id: "idle-look-around",
+    label: "Look around",
+    kind: "procedural",
+    ok: true
+  },
+  {
+    id: "idle-look-distance",
+    label: "Look distant",
+    kind: "procedural",
+    ok: true
+  },
+  {
+    id: "idle-walk-in-place",
+    label: "Walk in place",
+    kind: "procedural",
+    ok: true
+  }
+];
 const CAMERA_ZOOM_MIN = 0.45;
 const CAMERA_ZOOM_MAX = 1.8;
+const CAMERA_ANGLE_PRESETS = [
+  {
+    label: "Front",
+    yaw: 0,
+    pitch: 0.09,
+    targetY: 1.88,
+    radius: 6.4,
+    fallbackRadius: 10.5
+  },
+  {
+    label: "Portrait",
+    yaw: 0.28,
+    pitch: 0.16,
+    targetY: 2.22,
+    radius: 4.8,
+    fallbackRadius: 8.2
+  },
+  {
+    label: "High side",
+    yaw: -0.62,
+    pitch: 0.34,
+    targetY: 2.15,
+    radius: 7.2,
+    fallbackRadius: 11.8,
+    roll: -0.02
+  }
+];
 const PMX_ALPHA_LAYER_ALPHA_TEST = 0.01;
 const PREVIEW_QUERY_KEYS = {
   mode: "modelMode",
@@ -201,7 +270,8 @@ const motionController = {
   loadingId: null,
   status: "idle",
   error: "",
-  configured: false
+  configured: false,
+  proceduralTime: 0
 };
 const dialogueController = {
   messages: loadCompanionContext(),
@@ -1637,8 +1707,13 @@ function isReadyVrmaMotionPreset(preset) {
   return preset?.ok && preset.url && (preset.kind || "vrma").toLowerCase() === "vrma";
 }
 
+function isProceduralMotionOption(option) {
+  return option?.kind === "procedural";
+}
+
 function configureMotionOptions(state) {
   const configured = state?.scene?.modelPreview || {};
+  const savedDemoPreview = getSavedDemoPreviewOptions() || {};
   const vrmaOptions = (state?.motionPresets || [])
     .filter(isReadyVrmaMotionPreset)
     .map((preset) => ({
@@ -1651,12 +1726,20 @@ function configureMotionOptions(state) {
       ok: true
     }));
 
-  motionController.options = [STILL_MOTION_OPTION, ...vrmaOptions];
+  motionController.options = [STILL_MOTION_OPTION, ...PROCEDURAL_MOTION_OPTIONS, ...vrmaOptions];
   motionController.configured = true;
-  modelPreviewOptions.motion = pickFirstChoice(
-    [queryParams.get("modelMotion"), configured.motion, configured.modelMotion],
-    getMotionModeChoices(),
-    DEFAULT_MODEL_PREVIEW_OPTIONS.motion
+  modelPreviewOptions.motion = pickMotionChoice(
+    pickFirstChoice(
+      [
+        queryParams.get("modelMotion"),
+        savedDemoPreview.motion,
+        savedDemoPreview.modelMotion,
+        configured.motion,
+        configured.modelMotion
+      ],
+      getMotionModeChoices(),
+      STILL_MOTION_ID
+    )
   );
   populateMotionModeSelect();
 }
@@ -1702,6 +1785,7 @@ function resetLoadedModelMotion({ resetExpressions = true } = {}) {
   motionController.clip = null;
   motionController.status = "idle";
   motionController.error = "";
+  motionController.proceduralTime = 0;
   activeVrm?.humanoid?.resetNormalizedPose?.();
 
   if (resetExpressions) {
@@ -1756,9 +1840,132 @@ function loadVrmAnimationClip(option) {
   });
 }
 
+function toQuaternionArray(x = 0, y = 0, z = 0) {
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, "XYZ")).toArray();
+}
+
+function buildProceduralPose(mode, t) {
+  const slow = Math.sin(t * 1.15);
+  const medium = Math.sin(t * 2.1);
+  const step = Math.sin(t * 5.6);
+  const counterStep = Math.sin(t * 5.6 + Math.PI);
+  const headSweep = Math.sin(t * 0.62);
+  const glance = Math.sin(t * 1.35);
+
+  const pose = {
+    hips: {
+      position: [0, 0.012 * slow, 0],
+      rotation: toQuaternionArray(0, 0.018 * slow, 0)
+    },
+    spine: {
+      rotation: toQuaternionArray(0.018 * slow, 0, 0.012 * medium)
+    },
+    chest: {
+      rotation: toQuaternionArray(-0.014 * slow, 0, -0.01 * medium)
+    },
+    upperChest: {
+      rotation: toQuaternionArray(-0.01 * slow, 0, -0.008 * medium)
+    },
+    neck: {
+      rotation: toQuaternionArray(0.025 * slow, 0.02 * medium, 0)
+    },
+    head: {
+      rotation: toQuaternionArray(0.02 * slow, 0.035 * medium, 0.008 * slow)
+    },
+    leftUpperArm: {
+      rotation: toQuaternionArray(0.08 + 0.025 * slow, 0.06, 1.22)
+    },
+    leftLowerArm: {
+      rotation: toQuaternionArray(-0.18 + 0.02 * medium, 0, 0.08)
+    },
+    rightUpperArm: {
+      rotation: toQuaternionArray(0.08 + 0.025 * slow, -0.06, -1.22)
+    },
+    rightLowerArm: {
+      rotation: toQuaternionArray(-0.18 + 0.02 * medium, 0, -0.08)
+    }
+  };
+
+  if (mode === "idle-look-around") {
+    pose.neck.rotation = toQuaternionArray(0.04 * glance, 0.22 * headSweep, 0.02 * glance);
+    pose.head.rotation = toQuaternionArray(0.03 * glance, 0.32 * headSweep, -0.025 * headSweep);
+    pose.chest.rotation = toQuaternionArray(-0.01 * slow, 0.04 * headSweep, -0.01 * medium);
+  }
+
+  if (mode === "idle-look-distance") {
+    pose.hips.rotation = toQuaternionArray(0, -0.08 + 0.018 * slow, 0);
+    pose.spine.rotation = toQuaternionArray(-0.02 + 0.01 * slow, -0.06, 0.01 * medium);
+    pose.chest.rotation = toQuaternionArray(-0.045 + 0.012 * slow, -0.08, -0.008 * medium);
+    pose.neck.rotation = toQuaternionArray(-0.09 + 0.02 * slow, -0.16 + 0.025 * glance, 0.015);
+    pose.head.rotation = toQuaternionArray(-0.1 + 0.025 * slow, -0.24 + 0.045 * glance, 0.02);
+    pose.leftUpperArm.rotation = toQuaternionArray(0.08 + 0.02 * slow, 0.04, 1.18);
+    pose.rightUpperArm.rotation = toQuaternionArray(0.08 + 0.02 * slow, -0.04, -1.16);
+  }
+
+  if (mode === "idle-walk-in-place") {
+    pose.hips.position = [0, 0.045 + Math.abs(step) * 0.025, 0];
+    pose.hips.rotation = toQuaternionArray(0.015 * step, 0.035 * slow, 0.025 * step);
+    pose.spine.rotation = toQuaternionArray(-0.035 * step, 0, -0.025 * step);
+    pose.chest.rotation = toQuaternionArray(0.025 * step, 0, 0.018 * step);
+    pose.neck.rotation = toQuaternionArray(0.03 * slow, 0.035 * medium, 0);
+    pose.head.rotation = toQuaternionArray(0.018 * slow, 0.045 * medium, -0.01 * step);
+    pose.leftUpperLeg = {
+      rotation: toQuaternionArray(0.42 * step, 0, 0.035)
+    };
+    pose.leftLowerLeg = {
+      rotation: toQuaternionArray(-0.28 * Math.max(0, step), 0, 0)
+    };
+    pose.leftFoot = {
+      rotation: toQuaternionArray(0.1 * Math.max(0, counterStep), 0, 0)
+    };
+    pose.rightUpperLeg = {
+      rotation: toQuaternionArray(0.42 * counterStep, 0, -0.035)
+    };
+    pose.rightLowerLeg = {
+      rotation: toQuaternionArray(-0.28 * Math.max(0, counterStep), 0, 0)
+    };
+    pose.rightFoot = {
+      rotation: toQuaternionArray(0.1 * Math.max(0, step), 0, 0)
+    };
+    pose.leftUpperArm.rotation = toQuaternionArray(-0.22 * counterStep, 0.04, 1.12);
+    pose.leftLowerArm = {
+      rotation: toQuaternionArray(-0.16 + 0.08 * step, 0, 0)
+    };
+    pose.rightUpperArm.rotation = toQuaternionArray(-0.22 * step, -0.04, -1.12);
+    pose.rightLowerArm = {
+      rotation: toQuaternionArray(-0.16 + 0.08 * counterStep, 0, 0)
+    };
+  }
+
+  return pose;
+}
+
+function applyProceduralVrmMotion(delta) {
+  const option = getMotionModeOption(modelPreviewOptions.motion);
+  if (!activeVrm?.humanoid || !isProceduralMotionOption(option)) {
+    return false;
+  }
+
+  motionController.proceduralTime += delta;
+  activeVrm.humanoid.resetNormalizedPose?.();
+  activeVrm.humanoid.setNormalizedPose?.(
+    buildProceduralPose(option.id, motionController.proceduralTime)
+  );
+  motionController.status = "playing";
+  motionController.error = "";
+  return true;
+}
+
 async function applyLoadedModelMotion() {
   const option = getMotionModeOption(modelPreviewOptions.motion);
   resetLoadedModelMotion();
+
+  if (isProceduralMotionOption(option) && activeVrm?.humanoid) {
+    motionController.status = "playing";
+    motionController.error = "";
+    refreshModelPreview();
+    return;
+  }
 
   if (option.id === STILL_MOTION_ID || !activeVrm?.scene) {
     refreshModelPreview();
@@ -1806,6 +2013,9 @@ async function applyLoadedModelMotion() {
 }
 
 function updateLoadedModelMotion(delta) {
+  if (applyProceduralVrmMotion(delta)) {
+    return;
+  }
   motionController.mixer?.update(delta);
 }
 
@@ -1818,60 +2028,39 @@ function animateStage(t) {
   stage.rotation.y = Math.sin(t * 0.18) * 0.025;
 }
 
-function updateCamera(t) {
+function updateCamera() {
   const cameraZoom = THREE.MathUtils.clamp(
     modelPreviewOptions.cameraZoom,
     CAMERA_ZOOM_MIN,
     CAMERA_ZOOM_MAX
   );
+  const preset = CAMERA_ANGLE_PRESETS[cameraMode] || CAMERA_ANGLE_PRESETS[0];
+  const radius = (realDancer ? preset.radius : preset.fallbackRadius) * cameraZoom;
+  const yaw = preset.yaw + drag.yaw;
+  const pitch = THREE.MathUtils.clamp(
+    preset.pitch + drag.pitch,
+    realDancer ? -0.08 : 0.02,
+    realDancer ? 0.76 : 0.88
+  );
+  const targetY = preset.targetY;
 
-  if (realDancer && !drag.active && Math.abs(drag.yaw) <= 0.001 && Math.abs(drag.pitch) <= 0.001) {
-    camera.position.set(0, 2.45, 6.4 * cameraZoom);
-    camera.rotation.z = 0;
-    camera.lookAt(0, 1.88, 0);
-    return;
-  }
+  camera.position.set(
+    Math.sin(yaw) * Math.cos(pitch) * radius,
+    targetY + Math.sin(pitch) * radius,
+    Math.cos(yaw) * Math.cos(pitch) * radius
+  );
+  orbitTarget.set(0, targetY, 0);
+  camera.lookAt(orbitTarget);
+  camera.rotation.z = preset.roll || 0;
 
-  if (drag.active || Math.abs(drag.yaw) > 0.001 || Math.abs(drag.pitch) > 0.001) {
-    const radius = (realDancer ? 6.4 : 10.5) * cameraZoom;
-    const yaw = drag.yaw + t * 0.08;
-    const pitch = THREE.MathUtils.clamp(0.36 + drag.pitch, 0.05, realDancer ? 0.62 : 0.88);
-    camera.position.set(
-      Math.sin(yaw) * radius,
-      1.25 + Math.sin(pitch) * (realDancer ? 3.3 : 5.6),
-      Math.cos(yaw) * radius
-    );
-    camera.lookAt(lookTarget);
-    return;
-  }
-
-  if (cameraMode === 0) {
-    const narrowBoost = camera.aspect < 0.72 ? 4.2 : 0;
-    const radius = (13.2 + narrowBoost + Math.sin(t * 0.85) * 1.1) * cameraZoom;
-    const angle = 0.22 + t * 0.36;
-    camera.position.set(
-      Math.sin(angle) * radius,
-      2.6 + Math.sin(t * 0.92) * 0.95,
-      Math.cos(angle) * radius
-    );
-    orbitTarget.set(Math.sin(t * 1.3) * 0.3, 2 + Math.sin(t * 1.7) * 0.24, 0);
-    camera.lookAt(orbitTarget);
-  } else if (cameraMode === 1) {
-    camera.position.set(
-      Math.sin(t * 1.2) * 1.8 * cameraZoom,
-      2.85 + Math.sin(t * 2.1) * 0.28,
-      4.2 * cameraZoom
-    );
-    orbitTarget.set(Math.sin(t * 2.4) * 0.25, 2.35, -0.25);
-    camera.lookAt(orbitTarget);
-  } else {
-    camera.position.set(
-      (-3.8 + Math.sin(t * 0.7) * 0.6) * cameraZoom,
-      3.9,
-      (6.2 + Math.cos(t * 0.5) * 0.5) * cameraZoom
-    );
-    camera.rotation.z = Math.sin(t * 1.6) * 0.08;
-    camera.lookAt(0, 2.4, 0);
+  if (window.localModelDebug) {
+    window.localModelDebug.camera = {
+      mode: preset.label,
+      yaw,
+      pitch,
+      position: camera.position.toArray(),
+      target: orbitTarget.toArray()
+    };
   }
 }
 
@@ -1914,51 +2103,198 @@ function pickFirstChoice(values, choices, fallback) {
   return values.find((value) => choices.includes(value)) || fallback;
 }
 
+function normalizeDemoConfigurationName(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "default";
+}
+
+function isDemoMode() {
+  return appMode === "demo";
+}
+
+function loadSavedDemoProfile() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(DEMO_PROFILE_STORAGE_KEY) || "null");
+    if (!stored || typeof stored !== "object") {
+      return null;
+    }
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
+function getSavedDemoPreviewOptions() {
+  return isDemoMode() ? loadSavedDemoProfile()?.modelPreview || null : null;
+}
+
+async function saveDemoProfile(configurationName = demoConfigurationName) {
+  demoConfigurationName = normalizeDemoConfigurationName(configurationName);
+  const selectedPreset = localAssetState?.selectedModelPreset || null;
+  const selectedMotion = getMotionModeOption(modelPreviewOptions.motion);
+  const motionPresets = selectedMotion?.kind === "vrma"
+    ? [{
+        id: selectedMotion.id,
+        label: selectedMotion.label,
+        path: selectedMotion.path,
+        kind: selectedMotion.kind,
+        required: true
+      }]
+    : [];
+  const profile = {
+    configuration: demoConfigurationName,
+    savedAt: new Date().toISOString(),
+    assetRoot: localAssetState?.config?.assetRoot || "/local-resources/original-video-assets/",
+    modelPreset: selectedPreset?.id || queryParams.get(PREVIEW_QUERY_KEYS.modelPreset) || "",
+    modelPresetLabel: selectedPreset?.label || "Configured model",
+    modelPresetAsset: selectedPreset
+      ? {
+          id: selectedPreset.id,
+          label: selectedPreset.label,
+          path: selectedPreset.path,
+          kind: selectedPreset.kind || getModelKind(selectedPreset),
+          required: true
+        }
+      : null,
+    modelPreview: { ...modelPreviewOptions },
+    motionPresets
+  };
+
+  localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  try {
+    const response = await fetch("/demo-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile)
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(body.error || `Save returned ${response.status}`);
+    }
+    const savedPath = body.path || "public/demo-profile.json";
+    addDialogueLine("system", `compiled ${demoConfigurationName}: ${profile.modelPresetLabel}`);
+    addDialogueLine("system", `saved ${savedPath}`);
+    showSpeechPhrase("Demo profile compiled.");
+  } catch (error) {
+    addDialogueLine(
+      "system",
+      `demo profile saved in browser only: ${error instanceof Error ? error.message : "compile failed"}`
+    );
+    showSpeechPhrase("Demo profile saved locally.");
+  }
+  return profile;
+}
+
+function replaceUrlFromQueryParams() {
+  const search = queryParams.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
+  );
+}
+
+function applySavedDemoProfileToUrlState() {
+  document.documentElement.dataset.appMode = appMode;
+  document.documentElement.dataset.demoConfiguration = demoConfigurationName;
+  if (!isDemoMode() || window.location.pathname.endsWith("/demo.html")) {
+    return;
+  }
+
+  const profile = loadSavedDemoProfile();
+  const savedModelPreset = profile?.modelPreset;
+  if (savedModelPreset && !queryParams.has(PREVIEW_QUERY_KEYS.modelPreset)) {
+    queryParams.set(PREVIEW_QUERY_KEYS.modelPreset, savedModelPreset);
+    replaceUrlFromQueryParams();
+  }
+}
+
+function openProfileSaveDialog() {
+  profileSaveNameInput.value = demoConfigurationName;
+  profileSaveNameInput.setSelectionRange(0, profileSaveNameInput.value.length);
+
+  if (typeof profileSaveDialog.showModal === "function") {
+    profileSaveDialog.showModal();
+    profileSaveNameInput.focus();
+    return;
+  }
+
+  const promptedName = window.prompt("Demo profile name", demoConfigurationName);
+  if (promptedName !== null) {
+    saveDemoProfile(promptedName);
+  }
+}
+
+function closeProfileSaveDialog() {
+  if (profileSaveDialog.open) {
+    profileSaveDialog.close();
+  }
+}
+
 function getModelPreviewOptions(sceneConfig) {
   const configured = sceneConfig?.modelPreview || {};
+  const savedDemoPreview = getSavedDemoPreviewOptions() || {};
   const mode = pickChoice(
-    queryParams.get("modelMode") || configured.mode || configured.modelMode,
+    queryParams.get("modelMode") ||
+      savedDemoPreview.mode ||
+      savedDemoPreview.modelMode ||
+      configured.mode ||
+      configured.modelMode,
     MODEL_MODE_CHOICES,
     DEFAULT_MODEL_PREVIEW_OPTIONS.mode
   );
   const lighting = pickChoice(
-    queryParams.get("modelLighting") || configured.lighting,
+    queryParams.get("modelLighting") || savedDemoPreview.lighting || configured.lighting,
     MODEL_LIGHTING_CHOICES,
     DEFAULT_MODEL_PREVIEW_OPTIONS.lighting
   );
-  const motion = pickFirstChoice(
-    [queryParams.get("modelMotion"), configured.motion, configured.modelMotion],
-    getMotionModeChoices(),
-    DEFAULT_MODEL_PREVIEW_OPTIONS.motion
+  const motion = pickMotionChoice(
+    pickFirstChoice(
+      [
+        queryParams.get("modelMotion"),
+        savedDemoPreview.motion,
+        savedDemoPreview.modelMotion,
+        configured.motion,
+        configured.modelMotion
+      ],
+      getMotionModeChoices(),
+      STILL_MOTION_ID
+    )
   );
   const stageLighting = parseUnitInterval(
-    queryParams.get("stageLighting") ?? configured.stageLighting,
+    queryParams.get("stageLighting") ?? savedDemoPreview.stageLighting ?? configured.stageLighting,
     DEFAULT_MODEL_PREVIEW_OPTIONS.stageLighting
   );
   const materialBoostStrength = Number(
     queryParams.get("materialBoostStrength") ??
+      savedDemoPreview.materialBoostStrength ??
       DEFAULT_MODEL_PREVIEW_OPTIONS.materialBoostStrength
   );
   const saturation = parseClampedNumber(
-    queryParams.get("modelSaturation") ?? configured.saturation,
+    queryParams.get("modelSaturation") ?? savedDemoPreview.saturation ?? configured.saturation,
     DEFAULT_MODEL_PREVIEW_OPTIONS.saturation,
     0,
     2
   );
   const bloomStrength = parseClampedNumber(
-    queryParams.get("modelBloom") ?? configured.bloomStrength,
+    queryParams.get("modelBloom") ?? savedDemoPreview.bloomStrength ?? configured.bloomStrength,
     DEFAULT_MODEL_PREVIEW_OPTIONS.bloomStrength,
     0,
     0.6
   );
   const cameraZoom = parseClampedNumber(
-    queryParams.get("cameraZoom") ?? configured.cameraZoom,
+    queryParams.get("cameraZoom") ?? savedDemoPreview.cameraZoom ?? configured.cameraZoom,
     DEFAULT_MODEL_PREVIEW_OPTIONS.cameraZoom,
     CAMERA_ZOOM_MIN,
     CAMERA_ZOOM_MAX
   );
   const readingWpm = Math.round(parseClampedNumber(
-    queryParams.get("readingWpm") ?? configured.readingWpm,
+    queryParams.get("readingWpm") ?? savedDemoPreview.readingWpm ?? configured.readingWpm,
     DEFAULT_MODEL_PREVIEW_OPTIONS.readingWpm,
     READING_WPM_MIN,
     READING_WPM_MAX
@@ -2471,12 +2807,7 @@ function setPreviewUrlParam(option, value) {
       ? formatPreviewNumber(value)
       : String(value);
   queryParams.set(key, normalizedValue);
-  const search = queryParams.toString();
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
-  );
+  replaceUrlFromQueryParams();
 }
 
 function pruneDeprecatedPreviewUrlParams() {
@@ -2492,12 +2823,7 @@ function pruneDeprecatedPreviewUrlParams() {
     return;
   }
 
-  const search = queryParams.toString();
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`
-  );
+  replaceUrlFromQueryParams();
 }
 
 function updatePreviewControls() {
@@ -3238,13 +3564,47 @@ togglePlay.addEventListener("click", () => {
 });
 
 cameraModeButton.addEventListener("click", () => {
-  cameraMode = (cameraMode + 1) % 3;
+  cameraMode = (cameraMode + 1) % CAMERA_ANGLE_PRESETS.length;
   drag.yaw = 0;
   drag.pitch = 0;
+  const preset = CAMERA_ANGLE_PRESETS[cameraMode] || CAMERA_ANGLE_PRESETS[0];
+  cameraModeButton.title = `Camera: ${preset.label}`;
+  cameraModeButton.setAttribute("aria-label", `Camera angle: ${preset.label}`);
 });
 
 modelPresetSelect.addEventListener("change", (event) => {
   setModelPreset(event.currentTarget.value);
+});
+
+saveDemoProfileButton.addEventListener("click", () => {
+  openProfileSaveDialog();
+});
+
+profileSaveForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const requestedName = normalizeDemoConfigurationName(profileSaveNameInput.value);
+  profileSaveNameInput.value = requestedName;
+  saveDemoProfileButton.disabled = true;
+  profileSaveForm.querySelector("button[type='submit']").disabled = true;
+  saveDemoProfileButton.dataset.state = "saving";
+  try {
+    await saveDemoProfile(requestedName);
+    closeProfileSaveDialog();
+  } finally {
+    saveDemoProfileButton.disabled = false;
+    profileSaveForm.querySelector("button[type='submit']").disabled = false;
+    saveDemoProfileButton.dataset.state = "";
+  }
+});
+
+cancelProfileSaveButton.addEventListener("click", () => {
+  closeProfileSaveDialog();
+});
+
+profileSaveDialog.addEventListener("click", (event) => {
+  if (event.target === profileSaveDialog) {
+    closeProfileSaveDialog();
+  }
 });
 
 eyeMorphSelect.addEventListener("change", (event) => {
@@ -3322,10 +3682,11 @@ previewOptionButtons.forEach((button) => {
   });
 });
 
+applySavedDemoProfileToUrlState();
 pruneDeprecatedPreviewUrlParams();
 populateSpeechPhraseSelect();
 setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
-addDialogueLine("system", `${OLLAMA_MODEL} ready`);
+addDialogueLine("system", isDemoMode() ? "demo mode ready" : `${OLLAMA_MODEL} ready`);
 updatePreviewControls();
 
 canvas.addEventListener("pointerdown", (event) => {
@@ -3376,10 +3737,16 @@ canvas.addEventListener("dblclick", (event) => {
 
 window.addEventListener("resize", resize);
 
-loadLocalAssetConfig()
+const loadAssetConfig = isDemoMode() ? loadDemoAssetConfig : loadLocalAssetConfig;
+
+loadAssetConfig()
   .then((state) => {
     localAssetState = state;
     window.localAssetState = state;
+    if (isDemoMode() && state.config?.configuration) {
+      demoConfigurationName = normalizeDemoConfigurationName(state.config.configuration);
+      document.documentElement.dataset.demoConfiguration = demoConfigurationName;
+    }
     configureMotionOptions(state);
     populateModelPresetSelect(state);
     renderAssetStatus(state, assetStatus);

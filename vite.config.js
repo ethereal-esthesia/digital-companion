@@ -1,5 +1,7 @@
-import { access, readdir } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 const LOCAL_ASSET_ROOT = "local-resources/original-video-assets";
@@ -7,6 +9,35 @@ const AUTO_MODEL_FOLDER = "model/vrm-samples";
 const MODEL_EXTENSIONS = new Set([".pmx", ".pmd", ".vrm"]);
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const DEMO_PROFILE_PATH = "public/demo-profile.json";
+const DEMO_CONFIG_DIR = "public/demo-configs";
+const DEFAULT_DEMO_CONFIGURATION = "default";
+const PROJECT_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const LOCAL_ASSET_URL_PREFIX = `/${LOCAL_ASSET_ROOT}/`;
+
+const CONTENT_TYPES = new Map([
+  [".bmp", "image/bmp"],
+  [".fbx", "application/octet-stream"],
+  [".flac", "audio/flac"],
+  [".glb", "model/gltf-binary"],
+  [".gltf", "model/gltf+json"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".json", "application/json; charset=utf-8"],
+  [".mp3", "audio/mpeg"],
+  [".ogg", "audio/ogg"],
+  [".pmd", "application/octet-stream"],
+  [".pmx", "application/octet-stream"],
+  [".png", "image/png"],
+  [".tga", "image/x-tga"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".vmd", "application/octet-stream"],
+  [".vpd", "application/octet-stream"],
+  [".vrm", "model/gltf-binary"],
+  [".vrma", "model/gltf-binary"],
+  [".wav", "audio/wav"],
+  [".webp", "image/webp"]
+]);
 
 function slugify(value) {
   return value
@@ -18,6 +49,85 @@ function slugify(value) {
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
+}
+
+function getRequestPathname(request) {
+  try {
+    return new URL(request.url || "/", "http://localhost").pathname;
+  } catch {
+    return "/";
+  }
+}
+
+function isExactRequestPath(request, pathname) {
+  return getRequestPathname(request) === pathname;
+}
+
+function getContentType(filePath) {
+  return CONTENT_TYPES.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
+}
+
+async function serveLocalAsset(rootDir, request, response, next) {
+  const pathname = getRequestPathname(request);
+  if (!pathname.startsWith(LOCAL_ASSET_URL_PREFIX)) {
+    next();
+    return;
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    response.statusCode = 405;
+    response.setHeader("Allow", "GET, HEAD");
+    response.end("Method Not Allowed");
+    return;
+  }
+
+  let decodedPathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    response.statusCode = 400;
+    response.end("Bad Request");
+    return;
+  }
+
+  const localAssetRoot = path.resolve(rootDir, LOCAL_ASSET_ROOT);
+  const filePath = path.resolve(rootDir, decodedPathname.slice(1));
+  if (filePath !== localAssetRoot && !filePath.startsWith(`${localAssetRoot}${path.sep}`)) {
+    response.statusCode = 403;
+    response.end("Forbidden");
+    return;
+  }
+
+  let fileStat;
+  try {
+    fileStat = await stat(filePath);
+  } catch {
+    response.statusCode = 404;
+    response.end("Not Found");
+    return;
+  }
+
+  if (!fileStat.isFile()) {
+    response.statusCode = 404;
+    response.end("Not Found");
+    return;
+  }
+
+  response.statusCode = 200;
+  response.setHeader("Content-Type", getContentType(filePath));
+  response.setHeader("Content-Length", String(fileStat.size));
+  response.setHeader("Cache-Control", "no-store");
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  createReadStream(filePath).on("error", () => {
+    if (!response.headersSent) {
+      response.statusCode = 500;
+    }
+    response.end();
+  }).pipe(response);
 }
 
 async function findFirstModelFile(folder) {
@@ -178,6 +288,47 @@ async function handleOllamaChat(request, response) {
   }
 }
 
+async function handleDemoProfileSave(rootDir, request, response) {
+  if (request.method !== "POST") {
+    sendJson(response, 405, { error: "POST required" });
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(request);
+    if (!body?.modelPresetAsset?.path) {
+      sendJson(response, 400, { error: "Demo profile requires a selected model asset" });
+      return;
+    }
+
+    const configuration = slugify(String(body.configuration || DEFAULT_DEMO_CONFIGURATION)) ||
+      DEFAULT_DEMO_CONFIGURATION;
+    const namedPath = path.join(DEMO_CONFIG_DIR, `${configuration}.json`);
+    const outputPath = path.join(rootDir, namedPath);
+    const defaultPath = path.join(rootDir, DEMO_PROFILE_PATH);
+    const profile = {
+      ...body,
+      configuration
+    };
+
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await mkdir(path.dirname(defaultPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+    await writeFile(defaultPath, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+    sendJson(response, 200, {
+      ok: true,
+      path: namedPath,
+      defaultPath: DEMO_PROFILE_PATH,
+      configuration,
+      modelPreset: body.modelPreset || ""
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      error: error instanceof Error ? error.message : "Demo profile save failed"
+    });
+  }
+}
+
 function localModelPresetPlugin() {
   return {
     name: "local-companion-dev-services",
@@ -194,8 +345,22 @@ function localModelPresetPlugin() {
         }
       });
       server.middlewares.use("/ollama-chat", handleOllamaChat);
+      server.middlewares.use((request, response, next) => {
+        if (!isExactRequestPath(request, "/demo-profile")) {
+          next();
+          return;
+        }
+        handleDemoProfileSave(server.config.root, request, response);
+      });
     },
     configurePreviewServer(server) {
+      server.middlewares.use((request, response, next) => {
+        serveLocalAsset(process.cwd(), request, response, next).catch((error) => {
+          sendJson(response, 500, {
+            error: error instanceof Error ? error.message : "Local asset serving failed"
+          });
+        });
+      });
       server.middlewares.use("/local-model-presets.json", async (_request, response) => {
         try {
           const modelPresets = await discoverModelPresets(process.cwd());
@@ -208,10 +373,25 @@ function localModelPresetPlugin() {
         }
       });
       server.middlewares.use("/ollama-chat", handleOllamaChat);
+      server.middlewares.use((request, response, next) => {
+        if (!isExactRequestPath(request, "/demo-profile")) {
+          next();
+          return;
+        }
+        handleDemoProfileSave(process.cwd(), request, response);
+      });
     }
   };
 }
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        admin: path.resolve(PROJECT_ROOT, "index.html"),
+        demo: path.resolve(PROJECT_ROOT, "demo.html")
+      }
+    }
+  },
   plugins: [localModelPresetPlugin()]
 });

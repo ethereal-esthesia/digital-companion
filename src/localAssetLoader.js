@@ -1,6 +1,7 @@
 const DEFAULT_CONFIG_URL = "/local-resources/original-video-assets/config.json";
 const FALLBACK_CONFIG_URL = "/resources/original-video-assets/config.example.json";
 const DISCOVERED_MODEL_PRESETS_URL = "/local-model-presets.json";
+const DEMO_PROFILE_URL = "/demo-profile.json";
 
 const ASSET_ORDER = ["model", "stage", "motion", "camera", "facial", "audio"];
 const MODEL_PRESET_QUERY_KEY = "modelPreset";
@@ -300,6 +301,58 @@ export async function loadLocalAssetConfig(configUrl = DEFAULT_CONFIG_URL) {
     config,
     configSource,
     usingExample,
+    scene,
+    assets: results,
+    modelPresets: modelPresetResults,
+    motionPresets: motionPresetResults,
+    selectedModelPreset,
+    summary: summarize(results)
+  };
+}
+
+export async function loadDemoAssetConfig(profileUrl = DEMO_PROFILE_URL) {
+  const profile = await fetchJson(profileUrl);
+  const root = profile.assetRoot || "/local-resources/original-video-assets/";
+  const scene = {
+    id: profile.sceneId || "compiled-demo",
+    modelPreview: profile.modelPreview || {},
+    activeModelPreset: profile.modelPreset || "",
+    assets: profile.assets || {},
+    modelPresets: profile.modelPresetAsset ? [profile.modelPresetAsset] : [],
+    motionPresets: profile.motionPresets || []
+  };
+  const modelPresets = normalizeModelPresets(scene, root, []);
+  const motionPresets = normalizeMotionPresets(scene, root);
+  const requestedModelPreset = pickModelPreset(scene, modelPresets);
+  const modelPresetResults = await Promise.all(
+    modelPresets.map(async (preset) => {
+      const probe = await probeAsset(preset.url);
+      return { ...preset, ...probe };
+    })
+  );
+  const motionPresetResults = await Promise.all(
+    motionPresets.map(async (preset) => {
+      const probe = await probeAsset(preset.url);
+      return { ...preset, ...probe };
+    })
+  );
+  const selectedModelPreset = pickReadyModelPreset(
+    scene,
+    modelPresetResults,
+    requestedModelPreset?.id
+  );
+  const assets = normalizeAssets({ assetRoot: root }, scene, selectedModelPreset);
+  const results = await Promise.all(
+    assets.map(async (asset) => {
+      const probe = await probeAsset(asset.url);
+      return { ...asset, ...probe };
+    })
+  );
+
+  return {
+    config: profile,
+    configSource: profileUrl,
+    usingExample: false,
     scene,
     assets: results,
     modelPresets: modelPresetResults,

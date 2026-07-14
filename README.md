@@ -112,6 +112,51 @@ npm run dev
 
 Then open the local development URL shown by Vite.
 
+### Admin and demo modes
+
+Use admin mode to tune and save demo profiles:
+
+```bash
+npm run configure
+```
+
+```text
+http://127.0.0.1:5173/?mode=admin&config=default
+```
+
+Click `Save demo profile` after choosing the model preset and preview settings. The save dialog asks for the profile name. You can also pass an optional name after `--` to prefill that dialog:
+
+```bash
+npm run configure -- sameko
+```
+
+In dev/preview, saving writes deployable profiles to:
+
+```text
+public/demo-configs/<name>.json
+public/demo-profile.json
+```
+
+Run the default compiled demo locally with:
+
+```bash
+npm run demo
+```
+
+Run a specific saved configuration with:
+
+```bash
+npm run run -- sameko
+```
+
+`npm run demo -- sameko` is the same command with a less funny name. Both validate the selected profile, build the public bundle, copy that profile into `dist/demo-profile.json`, and serve the separate demo page:
+
+```text
+http://127.0.0.1:4173/
+```
+
+For deploy packaging or CI, use `npm run demo:build -- sameko`. The public demo page loads only the compiled profile instead of the full local model catalog.
+
 ### Local companion chat
 
 The prototype can talk to a local Ollama server through the dev server bridge. The default lightweight model is:

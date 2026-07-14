@@ -32,6 +32,7 @@ Read it before opening gated source downloads. It gathers original source descri
 | --- | --- |
 | Source Bilibili metadata | `local-resources/original-video-assets/sources/bilibili-BV1MsZtYCE4t.json` |
 | RedialC node-tree metadata | `local-resources/original-video-assets/sources/` |
+| YouTube video asset/download profiles | `local-resources/original-video-assets/sources/*-download-profile.json` |
 | Source cover image | `local-resources/original-video-assets/references/source-cover.jpg` |
 | Source first frame | `local-resources/original-video-assets/references/source-first-frame.jpg` |
 

@@ -1,0 +1,34 @@
+{
+  "configuration": "default",
+  "savedAt": "2026-07-13T17:40:25.653Z",
+  "assetRoot": "/local-resources/original-video-assets/",
+  "modelPreset": "sameko-saba-abakat",
+  "modelPresetLabel": "Sameko Saba (Abakat VRM)",
+  "modelPresetAsset": {
+    "id": "sameko-saba-abakat",
+    "label": "Sameko Saba (Abakat VRM)",
+    "path": "model/sameko-saba-abakat/VRM/Sameko Saba VRM.vrm",
+    "kind": "vrm",
+    "required": true
+  },
+  "modelPreview": {
+    "mode": "textured",
+    "lighting": "native",
+    "motion": "vroid-greeting",
+    "stageLighting": 0.58,
+    "materialBoostStrength": 0.54,
+    "saturation": 1.47,
+    "bloomStrength": 0,
+    "cameraZoom": 0.9932729022114903,
+    "readingWpm": 400
+  },
+  "motionPresets": [
+    {
+      "id": "vroid-greeting",
+      "label": "Greeting",
+      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_02.vrma",
+      "kind": "vrma",
+      "required": true
+    }
+  ]
+}

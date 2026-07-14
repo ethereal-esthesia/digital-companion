@@ -1,0 +1,34 @@
+{
+  "configuration": "vita",
+  "savedAt": "2026-07-13T20:01:46.251Z",
+  "assetRoot": "/local-resources/original-video-assets/",
+  "modelPreset": "vrm-sample-vita",
+  "modelPresetLabel": "Vita",
+  "modelPresetAsset": {
+    "id": "vrm-sample-vita",
+    "label": "Vita",
+    "path": "model/vrm-samples/Vita/Vita.vrm",
+    "kind": "vrm",
+    "required": true
+  },
+  "modelPreview": {
+    "mode": "textured",
+    "lighting": "native",
+    "motion": "vroid-greeting",
+    "stageLighting": 0.35,
+    "materialBoostStrength": 0,
+    "saturation": 0.72,
+    "bloomStrength": 0,
+    "cameraZoom": 1,
+    "readingWpm": 200
+  },
+  "motionPresets": [
+    {
+      "id": "vroid-greeting",
+      "label": "Greeting",
+      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_02.vrma",
+      "kind": "vrma",
+      "required": true
+    }
+  ]
+}

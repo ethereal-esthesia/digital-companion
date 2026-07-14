@@ -14,6 +14,118 @@
     "metadataApi": "https://api.bilibili.com/x/web-interface/view?bvid=BV1MsZtYCE4t",
     "youtubeMirror": "https://www.youtube.com/watch?v=VM5E6-MyF4I"
   },
+  "sourceProfiles": [
+    {
+      "label": "YouTube Primary Star MMD profile",
+      "provider": "youtube",
+      "url": "https://www.youtube.com/watch?v=ZBKAbGLFhKc",
+      "destination": "sources/youtube-ZBKAbGLFhKc-download-profile.json",
+      "creditedAssets": [
+        {
+          "type": "music",
+          "name": "Primary Star",
+          "creator": "Reno",
+          "sourceUrl": "https://www.youtube.com/watch?v=IAKYrFtaPXU",
+          "localPath": "music/primary-star/",
+          "licenseStatus": "external-reference-rights-uncleared",
+          "downloadSources": [
+            {
+              "label": "Reno official YouTube song",
+              "url": "https://www.youtube.com/watch?v=IAKYrFtaPXU",
+              "mode": "manual",
+              "reason": "Audio rights are not cleared for repo/app redistribution."
+            }
+          ]
+        },
+        {
+          "type": "motion",
+          "name": "Primary Star",
+          "creator": "mobiusP",
+          "sourceUrl": "https://www.nicovideo.jp/watch/sm40352087",
+          "localPath": "motion/primary-star/",
+          "licenseStatus": "needs-source-description-and-bundled-terms-review",
+          "relatedCredits": [
+            {
+              "type": "dance",
+              "creator": "@nullpon1215"
+            }
+          ],
+          "downloadSources": [
+            {
+              "label": "Nico motion source",
+              "url": "https://www.nicovideo.jp/watch/sm40352087",
+              "mode": "manual",
+              "reason": "Check the source description and bundled terms before downloading or importing."
+            }
+          ]
+        },
+        {
+          "type": "model",
+          "name": "YYB Hatsune Miku MAGICAL MIRAI 10th 1.0ver",
+          "creator": "mrytchen",
+          "sourceUrl": "https://www.deviantart.com/mrytchen/art/model-DLYYB-Hatsune-Miku-MAGICAL-MIRAI-10th-1-0ver-930157845",
+          "localPath": "model/yyb-hatsune-miku-magical-mirai-10th/",
+          "licenseStatus": "manual-download-needs-terms-review",
+          "downloadSources": [
+            {
+              "label": "DeviantArt model listing",
+              "url": "https://www.deviantart.com/mrytchen/art/model-DLYYB-Hatsune-Miku-MAGICAL-MIRAI-10th-1-0ver-930157845",
+              "mode": "manual",
+              "reason": "Review creator terms and bundled readmes before importing."
+            }
+          ]
+        },
+        {
+          "type": "camera",
+          "name": "Primary Star Camera",
+          "creator": "TheSodaWave",
+          "sourceUrl": "https://www.deviantart.com/thesodawave/art/Primary-Star-Camera-DL-931061604",
+          "localPath": "camera/primary-star/",
+          "licenseStatus": "manual-download-needs-terms-review",
+          "downloadSources": [
+            {
+              "label": "DeviantArt camera listing",
+              "url": "https://www.deviantart.com/thesodawave/art/Primary-Star-Camera-DL-931061604",
+              "mode": "manual",
+              "reason": "Review creator terms and bundled readmes before importing."
+            }
+          ]
+        },
+        {
+          "type": "stage",
+          "name": "Skydome / Platform",
+          "creator": "のりしお / TheSodaWave",
+          "sourceUrl": "https://www.youtube.com/watch?v=ZBKAbGLFhKc",
+          "localPath": "stage/primary-star/",
+          "licenseStatus": "source-needed-for-skydome-platform-local-only",
+          "downloadSources": []
+        },
+        {
+          "type": "effects",
+          "name": "Raycast, ikBokeh, ikClut, ikChromatic, ikParticle, HgSAO, WorkingFloor, Z_Cloud, Line, KiraKira, PostRimLight, M4Layer, Curl",
+          "creator": "rui / ikeno / HariganeP / Beamman / ミーフォ茜 / unknown Curl author",
+          "sourceUrl": "https://www.youtube.com/watch?v=ZBKAbGLFhKc",
+          "localPath": "effects/primary-star/",
+          "licenseStatus": "source-needed-before-import",
+          "downloadSources": []
+        }
+      ],
+      "downloadProfiles": {
+        "highestAvailable": {
+          "selector": "400+140/308+251/bestvideo+bestaudio/best",
+          "note": "Highest captured ladder is 1440p60. Prefer 400+140 for MP4/AV1+M4A, fallback to VP9/WebM or yt-dlp best."
+        },
+        "compatibleMp4": {
+          "selector": "299+140/298+140/18",
+          "note": "H.264 MP4 video with M4A audio; maxes at 1080p60 for broad playback/editor compatibility."
+        },
+        "previewOnly": {
+          "selector": "18",
+          "note": "Single-file 360p MP4 with audio for quick reference previews."
+        }
+      }
+    }
+  ],
   "localAssetRoot": "local-resources/original-video-assets/",
   "assets": {
     "stage": {

@@ -57,6 +57,19 @@ const downloads = [
   }
 ];
 
+const sourceProfiles = manifest.sourceProfiles || [];
+
+const sourceProfileManualSources = sourceProfiles.flatMap((profile) =>
+  (profile.creditedAssets || []).flatMap((asset) =>
+    (asset.downloadSources || []).map((source) => ({
+      label: `${profile.label}: ${asset.type || "asset"}: ${asset.name || source.label}`,
+      url: source.url || asset.sourceUrl,
+      reason: source.reason || asset.licenseStatus || "manual download and terms review required",
+      destination: asset.localPath || source.destination || "sources/"
+    }))
+  )
+);
+
 const modelPresetManualSources = (manifest.assets.modelPresets || []).flatMap((preset) => {
   const destination = preset.localPath || "model/";
   const sources = [];
@@ -140,7 +153,8 @@ const manualSources = [
     url: manifest.assets.nodeTrees[1].downloadSources[0].url,
     reason: "cloud-drive flow/readme review required",
     destination: "nodetree/"
-  }
+  },
+  ...sourceProfileManualSources
 ];
 
 const descriptionSources = [
@@ -232,6 +246,92 @@ async function download(item) {
     await writeFile(destination, bytes);
   }
 
+  return destination;
+}
+
+function runCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const stdout = [];
+    const stderr = [];
+
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      const output = Buffer.concat(stdout).toString("utf8");
+      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+
+      if (code === 0) {
+        resolve(output);
+        return;
+      }
+
+      reject(new Error(errorOutput || `${command} exited with code ${code}`));
+    });
+  });
+}
+
+function extractLinks(value) {
+  return [...String(value || "").matchAll(/https?:\/\/\S+/g)].map((match) =>
+    match[0].replace(/[),.]+$/, "")
+  );
+}
+
+function buildDownloadProfile(metadata, source) {
+  const formats = (metadata.formats || [])
+    .filter((format) => format.vcodec !== "none" || format.acodec !== "none")
+    .map((format) => ({
+      formatId: format.format_id,
+      ext: format.ext,
+      resolution: format.resolution,
+      width: format.width || null,
+      height: format.height || null,
+      fps: format.fps || null,
+      videoCodec: format.vcodec,
+      audioCodec: format.acodec,
+      bitrateKbps: format.tbr || null,
+      filesizeBytes: format.filesize || format.filesize_approx || null,
+      protocol: format.protocol
+    }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    source: {
+      provider: source.provider || metadata.extractor_key || "youtube",
+      id: metadata.id,
+      url: metadata.webpage_url || source.url,
+      title: metadata.title,
+      uploader: metadata.uploader,
+      channel: metadata.channel,
+      channelUrl: metadata.channel_url,
+      uploadDate: metadata.upload_date,
+      durationSeconds: metadata.duration,
+      thumbnail: metadata.thumbnail
+    },
+    description: metadata.description || "",
+    extractedSourceLinks: extractLinks(metadata.description),
+    creditedAssets: source.creditedAssets || [],
+    downloadProfiles: source.downloadProfiles || {},
+    formats
+  };
+}
+
+async function downloadSourceProfile(source) {
+  const destination = path.join(localRoot, source.destination);
+  await mkdir(path.dirname(destination), { recursive: true });
+
+  const output = await runCommand("yt-dlp", [
+    "--dump-single-json",
+    "--skip-download",
+    "--no-warnings",
+    source.url
+  ]);
+  const metadata = JSON.parse(output);
+  const profile = buildDownloadProfile(metadata, source);
+  await writeFile(destination, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
   return destination;
 }
 
@@ -521,6 +621,17 @@ for (const item of downloads) {
   } catch (error) {
     console.log(
       `skipped: ${item.label} (${error instanceof Error ? error.message : "unknown error"})`
+    );
+  }
+}
+
+for (const profile of sourceProfiles) {
+  try {
+    const destination = await downloadSourceProfile(profile);
+    console.log(`profiled: ${profile.label} -> ${path.relative(root, destination)}`);
+  } catch (error) {
+    console.log(
+      `skipped: ${profile.label} (${error instanceof Error ? error.message : "unknown error"})`
     );
   }
 }
