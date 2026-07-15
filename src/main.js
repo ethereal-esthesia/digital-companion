@@ -2673,10 +2673,11 @@ function advanceLoopTime(t, delta, duration) {
 function buildBreathePose(basePose, t) {
   const pose = cloneNormalizedPose(basePose);
   const breath = 0.5 * getLoopSine(t, BREATHE_LOOP_SECONDS);
+  const armBreath = breath * 0.5;
   const torsoLift = breath;
-  const clavicleRoll = breath;
-  const armDrift = 0.18 * breath;
-  const armSettle = 1 - Math.abs(breath) * 0.08;
+  const clavicleRoll = armBreath;
+  const armDrift = 0.18 * armBreath;
+  const armSettle = 1 - Math.abs(armBreath) * 0.08;
 
   addPosePositionDelta(pose, "hips", 0, -0.002 * torsoLift, 0);
   addPosePositionDelta(pose, "upperChest", 0, 0.006 * torsoLift, 0.002 * breath);
@@ -2707,28 +2708,28 @@ function buildBreathePose(basePose, t) {
   addPoseRotationDelta(
     pose,
     "leftUpperArm",
-    THREE.MathUtils.degToRad(-2.5 + 0.4 * breath),
+    THREE.MathUtils.degToRad(-2.5 + 0.4 * armBreath),
     THREE.MathUtils.degToRad(-2 - 0.5 * armDrift),
     THREE.MathUtils.degToRad(64 * armSettle - 0.35 * armDrift)
   );
   addPoseRotationDelta(
     pose,
     "rightUpperArm",
-    THREE.MathUtils.degToRad(-2.5 + 0.4 * breath),
+    THREE.MathUtils.degToRad(-2.5 + 0.4 * armBreath),
     THREE.MathUtils.degToRad(2 + 0.5 * armDrift),
     THREE.MathUtils.degToRad(-64 * armSettle + 0.35 * armDrift)
   );
   addPoseRotationDelta(
     pose,
     "leftLowerArm",
-    THREE.MathUtils.degToRad(3 + 0.4 * breath),
+    THREE.MathUtils.degToRad(3 + 0.4 * armBreath),
     0,
     THREE.MathUtils.degToRad(8)
   );
   addPoseRotationDelta(
     pose,
     "rightLowerArm",
-    THREE.MathUtils.degToRad(3 + 0.4 * breath),
+    THREE.MathUtils.degToRad(3 + 0.4 * armBreath),
     0,
     THREE.MathUtils.degToRad(-8)
   );
