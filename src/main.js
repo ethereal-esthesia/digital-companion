@@ -143,9 +143,13 @@ const STILL_MOTION_OPTION = {
 };
 const PROCEDURAL_BASE_MOTION_ID = "vroid-show-full-body";
 const BREATHE_LOOP_SECONDS = 4.2;
+const IDLE_BREATHE_MOTION_ID = "idle-breathe";
+const IDLE_INTERLUDE_MIN_SECONDS = 18;
+const IDLE_INTERLUDE_MAX_SECONDS = 38;
+const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
 const PROCEDURAL_MOTION_OPTIONS = [
   {
-    id: "idle-breathe",
+    id: IDLE_BREATHE_MOTION_ID,
     label: "Idle breathe",
     kind: "procedural",
     ok: true
@@ -260,7 +264,14 @@ const motionController = {
   proceduralTime: 0,
   proceduralBasePose: null,
   proceduralBasePoseKey: "",
-  proceduralBasePosePromise: null
+  proceduralBasePosePromise: null,
+  idleInterludeMixer: null,
+  idleInterludeAction: null,
+  idleInterludeFinishHandler: null,
+  idleInterludeLoadingId: null,
+  idleInterludeClock: 0,
+  idleInterludeNextAt: BREATHE_LOOP_SECONDS,
+  idleInterludeStartupPending: true
 };
 const dialogueController = {
   messages: loadCompanionContext(),
@@ -1298,7 +1309,17 @@ function getCurrentAppearanceSnapshot() {
   const selectedEyeMorph = getSelectedControllerLabel(eyeMorphController, "Default eyes");
   const selectedFaceEmote = getSelectedControllerLabel(faceEmoteController, "Default face");
   const selectedOutfitMorph = getSelectedControllerLabel(outfitMorphController, "Default outfit");
-  const motionLabel = getMotionModeLabel(modelPreviewOptions.motion);
+  const motionState = getMotionPlaybackState();
+  const motionLabel = motionState.isInterludeActive
+    ? `${motionState.effectiveLabel} scheduler interlude; default ${motionState.selectedLabel}`
+    : motionState.selectedLabel;
+  const nextInterlude = (
+    motionState.selectedId === IDLE_BREATHE_MOTION_ID &&
+    motionState.interludeLabel &&
+    !motionState.isInterludeActive
+  )
+    ? `Next scheduler motion: ${motionState.interludeLabel} ${motionState.interludeState === "startup-waiting" ? "after first breath loop" : `in about ${Math.ceil(motionState.interludeNextIn)}s`}`
+    : "";
   const stageLighting = Math.round(modelPreviewOptions.stageLighting * 100);
   const bloom = formatPreviewNumber(modelPreviewOptions.bloomStrength);
   const materialBoost = formatPreviewNumber(modelPreviewOptions.materialBoostStrength);
@@ -1311,7 +1332,8 @@ function getCurrentAppearanceSnapshot() {
     modelPath ? `Model source: ${modelPath}` : "",
     `Expression: ${selectedFaceEmote}; eyes: ${selectedEyeMorph}`,
     `Outfit/body option: ${selectedOutfitMorph}`,
-    `Pose/motion: ${motionLabel} (${motionController.status})`,
+    `Pose/motion: ${motionLabel} (${motionState.effectiveStatus})`,
+    nextInterlude,
     `Render style: ${modelPreviewOptions.mode}; lighting: ${modelPreviewOptions.lighting}`,
     `Scene tuning: stage ${stageLighting}%, bloom ${bloom}, material boost ${materialBoost}, saturation ${saturation}`,
     `Camera zoom: ${formatPreviewNumber(modelPreviewOptions.cameraZoom)}`
@@ -1699,6 +1721,71 @@ function isProceduralMotionOption(option) {
   return option?.kind === "procedural";
 }
 
+function getIdleInterludeDelay() {
+  return THREE.MathUtils.randFloat(
+    IDLE_INTERLUDE_MIN_SECONDS,
+    IDLE_INTERLUDE_MAX_SECONDS
+  );
+}
+
+function resetIdleInterludeSchedule({ startup = true } = {}) {
+  motionController.idleInterludeClock = 0;
+  motionController.idleInterludeNextAt = startup
+    ? BREATHE_LOOP_SECONDS
+    : getIdleInterludeDelay();
+  motionController.idleInterludeStartupPending = startup;
+}
+
+function getIdleInterludeState() {
+  if (motionController.idleInterludeAction) {
+    return "playing";
+  }
+
+  if (motionController.idleInterludeLoadingId) {
+    return "loading";
+  }
+
+  return motionController.idleInterludeStartupPending ? "startup-waiting" : "waiting";
+}
+
+function getMotionPlaybackState() {
+  const selectedOption = getMotionModeOption(modelPreviewOptions.motion);
+  const interludeOption = getProceduralBaseMotionOption();
+  const interludeState = getIdleInterludeState();
+  const isInterludeActive = Boolean(
+    interludeOption &&
+    selectedOption.id === IDLE_BREATHE_MOTION_ID &&
+    (interludeState === "loading" || interludeState === "playing")
+  );
+  const effectiveOption = isInterludeActive ? interludeOption : selectedOption;
+
+  return {
+    selectedId: selectedOption.id,
+    selectedLabel: selectedOption.label,
+    effectiveId: effectiveOption.id,
+    effectiveLabel: effectiveOption.label,
+    effectiveStatus: isInterludeActive ? interludeState : motionController.status,
+    interludeId: interludeOption?.id || "",
+    interludeLabel: interludeOption?.label || "",
+    interludeState,
+    interludeNextIn: Math.max(
+      0,
+      motionController.idleInterludeNextAt - motionController.idleInterludeClock
+    ),
+    isInterludeActive
+  };
+}
+
+function getMotionStatusSummary() {
+  const motionState = getMotionPlaybackState();
+
+  if (!motionState.isInterludeActive) {
+    return motionState.selectedLabel;
+  }
+
+  return `${motionState.effectiveLabel} (${motionState.effectiveStatus}; ${motionState.selectedLabel} resumes)`;
+}
+
 function configureMotionOptions(state) {
   const configured = state?.scene?.modelPreview || {};
   const savedDemoPreview = getSavedDemoPreviewOptions() || {};
@@ -1758,6 +1845,9 @@ function restoreManualExpressionSelections() {
 
 function resetLoadedModelMotion({ resetExpressions = true } = {}) {
   motionController.loadingId = null;
+  motionController.idleInterludeLoadingId = null;
+  stopIdleInterlude();
+  resetIdleInterludeSchedule();
 
   if (motionController.action) {
     motionController.action.stop();
@@ -2013,11 +2103,162 @@ function buildBreathePose(basePose, t) {
 }
 
 function buildProceduralPose(mode, t, basePose = {}) {
-  if (mode === "idle-breathe") {
+  if (mode === IDLE_BREATHE_MOTION_ID) {
     return buildBreathePose(basePose, t);
   }
 
   return cloneNormalizedPose(basePose);
+}
+
+function stopIdleInterlude() {
+  if (
+    motionController.idleInterludeMixer &&
+    motionController.idleInterludeFinishHandler
+  ) {
+    motionController.idleInterludeMixer.removeEventListener(
+      "finished",
+      motionController.idleInterludeFinishHandler
+    );
+  }
+
+  motionController.idleInterludeAction?.stop();
+
+  if (motionController.idleInterludeMixer && activeVrm?.scene) {
+    motionController.idleInterludeMixer.stopAllAction();
+    motionController.idleInterludeMixer.uncacheRoot(activeVrm.scene);
+  }
+
+  motionController.idleInterludeMixer = null;
+  motionController.idleInterludeAction = null;
+  motionController.idleInterludeFinishHandler = null;
+}
+
+function applyCurrentProceduralPose() {
+  if (!activeVrm?.humanoid || !motionController.proceduralBasePose) {
+    return;
+  }
+
+  activeVrm.humanoid.resetNormalizedPose?.();
+  activeVrm.humanoid.setNormalizedPose?.(
+    buildProceduralPose(
+      modelPreviewOptions.motion,
+      motionController.proceduralTime,
+      motionController.proceduralBasePose
+    )
+  );
+}
+
+function finishIdleInterlude() {
+  stopIdleInterlude();
+  motionController.proceduralTime = 0;
+  resetIdleInterludeSchedule({ startup: false });
+  applyCurrentProceduralPose();
+  updateLocalModelDebug();
+  updateModelAssetStatus();
+}
+
+async function startIdleInterlude() {
+  const interludeOption = getProceduralBaseMotionOption();
+
+  if (
+    !interludeOption ||
+    !activeVrm?.scene ||
+    modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
+    motionController.idleInterludeAction ||
+    motionController.idleInterludeLoadingId
+  ) {
+    return;
+  }
+
+  const loadingId = `${interludeOption.id}:${performance.now()}`;
+  motionController.idleInterludeLoadingId = loadingId;
+  motionController.idleInterludeStartupPending = false;
+  updateLocalModelDebug();
+  updateModelAssetStatus();
+
+  try {
+    const clip = await loadVrmAnimationClip(interludeOption);
+    if (
+      motionController.idleInterludeLoadingId !== loadingId ||
+      modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
+      !activeVrm?.scene
+    ) {
+      return;
+    }
+
+    motionController.idleInterludeLoadingId = null;
+    stopIdleInterlude();
+    motionController.proceduralTime = 0;
+    applyCurrentProceduralPose();
+
+    const mixer = new THREE.AnimationMixer(activeVrm.scene);
+    const action = mixer.clipAction(clip);
+    const finishHandler = (event) => {
+      if (event.action === action) {
+        finishIdleInterlude();
+      }
+    };
+
+    mixer.addEventListener("finished", finishHandler);
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = false;
+    action.play();
+
+    motionController.idleInterludeMixer = mixer;
+    motionController.idleInterludeAction = action;
+    motionController.idleInterludeFinishHandler = finishHandler;
+    updateLocalModelDebug();
+    updateModelAssetStatus();
+  } catch (error) {
+    console.warn(
+      error instanceof Error
+        ? `Idle interlude failed to load: ${error.message}`
+        : "Idle interlude failed to load"
+    );
+    resetIdleInterludeSchedule({ startup: false });
+    updateLocalModelDebug();
+    updateModelAssetStatus();
+  } finally {
+    if (motionController.idleInterludeLoadingId === loadingId) {
+      motionController.idleInterludeLoadingId = null;
+    }
+  }
+}
+
+function updateIdleInterlude(delta) {
+  if (!motionController.idleInterludeMixer || !motionController.idleInterludeAction) {
+    return false;
+  }
+
+  motionController.idleInterludeMixer.update(delta);
+  return true;
+}
+
+function updateIdleInterludeSchedule(delta) {
+  if (
+    delta <= 0 ||
+    modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
+    motionController.idleInterludeAction ||
+    motionController.idleInterludeLoadingId ||
+    !getProceduralBaseMotionOption()
+  ) {
+    return;
+  }
+
+  motionController.idleInterludeClock += delta;
+  if (motionController.idleInterludeClock < motionController.idleInterludeNextAt) {
+    return;
+  }
+
+  const neutralBreath = Math.abs(
+    getLoopSine(motionController.proceduralTime, BREATHE_LOOP_SECONDS)
+  );
+  if (neutralBreath > IDLE_INTERLUDE_NEUTRAL_THRESHOLD) {
+    return;
+  }
+
+  void startIdleInterlude();
 }
 
 function applyProceduralVrmMotion(delta) {
@@ -2030,15 +2271,19 @@ function applyProceduralVrmMotion(delta) {
     return true;
   }
 
+  if (updateIdleInterlude(delta)) {
+    motionController.status = "playing";
+    motionController.error = "";
+    return true;
+  }
+
+  updateIdleInterludeSchedule(delta);
   motionController.proceduralTime = advanceLoopTime(
     motionController.proceduralTime,
     delta,
     BREATHE_LOOP_SECONDS
   );
-  activeVrm.humanoid.resetNormalizedPose?.();
-  activeVrm.humanoid.setNormalizedPose?.(
-    buildProceduralPose(option.id, motionController.proceduralTime, motionController.proceduralBasePose)
-  );
+  applyCurrentProceduralPose();
   motionController.status = "playing";
   motionController.error = "";
   return true;
@@ -2952,6 +3197,7 @@ function pruneDeprecatedPreviewUrlParams() {
 
 function updatePreviewControls() {
   populateMotionModeSelect();
+  const motionState = getMotionPlaybackState();
 
   const amount = THREE.MathUtils.clamp(modelPreviewOptions.stageLighting, 0, 1);
   const stageLabel = `Stage lighting ${Math.round(amount * 100)}%`;
@@ -3005,6 +3251,8 @@ function updatePreviewControls() {
     modelPreviewOptions.saturation
   );
   document.documentElement.dataset.modelMotion = modelPreviewOptions.motion;
+  document.documentElement.dataset.effectiveModelMotion = motionState.effectiveId;
+  document.documentElement.dataset.modelMotionInterlude = motionState.interludeState;
 
   const requestedMotion = queryParams.get(PREVIEW_QUERY_KEYS.motion);
   if (
@@ -3026,8 +3274,11 @@ function updatePreviewControls() {
 
 function updateLocalModelDebug() {
   const alphaLayerStats = getMmdAlphaLayerStats();
+  const motionState = getMotionPlaybackState();
   document.documentElement.dataset.pmxAlphaLayers = String(alphaLayerStats.active);
   document.documentElement.dataset.pmxAlphaCutouts = String(alphaLayerStats.cutouts);
+  document.documentElement.dataset.effectiveModelMotion = motionState.effectiveId;
+  document.documentElement.dataset.modelMotionInterlude = motionState.interludeState;
 
   if (!window.localModelDebug) {
     return;
@@ -3054,10 +3305,18 @@ function updateLocalModelDebug() {
     cameraZoom: modelPreviewOptions.cameraZoom,
     readingWpm: modelPreviewOptions.readingWpm,
     motion: modelPreviewOptions.motion,
+    motionLabel: motionState.selectedLabel,
+    effectiveMotion: motionState.effectiveId,
+    effectiveMotionLabel: motionState.effectiveLabel,
+    effectiveMotionStatus: motionState.effectiveStatus,
     motionOptions: motionController.options.map((option) => option.label),
     motionStatus: motionController.status,
     motionError: motionController.error,
     motionClipDuration: motionController.clip?.duration || 0,
+    motionInterlude: motionState.interludeState,
+    motionInterludeId: motionState.interludeId,
+    motionInterludeLabel: motionState.interludeLabel,
+    motionInterludeNextIn: motionState.interludeNextIn,
     modelPreset: localAssetState?.selectedModelPreset?.label || "Configured model",
     alphaLayers: alphaLayerStats,
     eyeMorph: selectedEyeMorph?.name || "Default eyes",
@@ -3071,11 +3330,12 @@ function updateModelAssetStatus() {
     return;
   }
 
+  const motionSummary = getMotionStatusSummary();
   assetStatus.dataset.state = "ready";
   assetStatus.innerHTML = `
     <span>${getModelFormatLabel(activeModelKind)} model</span>
     <strong>${localAssetState?.selectedModelPreset?.label || (modelPreviewOptions.mode === "clay" ? "Clay" : "Textured")}</strong>
-    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · ${getMotionModeLabel(modelPreviewOptions.motion)} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${modelPreviewOptions.readingWpm} wpm · ${countModelBones(realDancer)} bones</small>
+    <small>${modelPreviewOptions.mode === "clay" ? "clay" : "textured"} · ${modelPreviewOptions.lighting} · ${motionSummary} · boost ${formatPreviewNumber(modelPreviewOptions.materialBoostStrength)} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}% · bloom ${formatPreviewNumber(modelPreviewOptions.bloomStrength)} · zoom ${formatPreviewNumber(modelPreviewOptions.cameraZoom)} · ${modelPreviewOptions.readingWpm} wpm · ${countModelBones(realDancer)} bones</small>
   `;
 }
 
