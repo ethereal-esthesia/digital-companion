@@ -1048,7 +1048,7 @@ function stopDemoScheduler() {
   updateDemoSchedulerStatus("idle");
 }
 
-function runSchedulerEvent(event) {
+async function runSchedulerEvent(event) {
   demoScheduler.lastEvent = formatSchedulerEventLabel(event);
   updateDemoSchedulerStatus("running");
 
@@ -1065,7 +1065,7 @@ function runSchedulerEvent(event) {
   }
 
   if (event.type === "command") {
-    runSchedulerCommand(event.command);
+    await runSchedulerCommand(event.command);
     updateDemoSchedulerStatus("running");
   }
 }
@@ -1092,7 +1092,7 @@ function startDemoScheduler(config = {}) {
 
   demoScheduler.timers = demoScheduler.events.map((event) =>
     window.setTimeout(() => {
-      runSchedulerEvent(event);
+      void runSchedulerEvent(event);
     }, event.at * 1000)
   );
   window.demoScheduler = demoScheduler;
@@ -1438,10 +1438,10 @@ function getCatchyCharacterName() {
   return firstReadablePart ? toTitleCaseName(firstReadablePart) : COMPANION_FALLBACK_NAME;
 }
 
-function formatRecentTranscript() {
+function formatRecentTranscript(limit = RECENT_TRANSCRIPT_LINES) {
   const conversation = dialogueController.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-RECENT_TRANSCRIPT_LINES);
+    .slice(-limit);
 
   if (conversation.length === 0) {
     return "No prior session lines.";
@@ -1751,14 +1751,41 @@ function getContinuationGreeting() {
   return `Hi, I'm ${characterName}. Thanks for giving me a second to wake up.`;
 }
 
-function runSchedulerCommand(command) {
+function getContinuationGreetingPrompt() {
+  return [
+    "Write Astera's short startup continuation greeting for this session.",
+    "Use the full recent chat context and saved memory to make it feel like she remembers where the conversation left off.",
+    "Do not summarize the transcript, mention files, mention the scheduler, or explain that you are using memory.",
+    "One natural sentence is best; two short sentences is the maximum."
+  ].join(" ");
+}
+
+async function requestContinuationGreeting() {
+  const reply = cleanCompanionReply(await requestOllamaReply(
+    getContinuationGreetingPrompt(),
+    {
+      includeSavedMemory: true,
+      transcriptLines: PERSISTED_CONTEXT_LINES,
+      currentTurnGuidance: "The app just started. Write only Astera's brief continuation greeting using the full prior chat context.",
+      appendPrompt: true
+    }
+  ));
+  return reply || getContinuationGreeting();
+}
+
+async function runSchedulerCommand(command) {
   const normalizedCommand = command.trim().toLowerCase();
   if (normalizedCommand === "continue-greeting" || normalizedCommand === "continuation-greeting") {
     if (shouldSkipContinuationGreeting()) {
       return true;
     }
 
-    addAssistantDialogueReply(getContinuationGreeting());
+    try {
+      addAssistantDialogueReply(await requestContinuationGreeting());
+    } catch (error) {
+      console.warn("Continuation greeting failed", error);
+      addAssistantDialogueReply(getContinuationGreeting());
+    }
     return true;
   }
 
@@ -1778,18 +1805,19 @@ function getCurrentTurnGuidance(prompt) {
   return "Answer the latest user message directly. Mention appearance or model details only if the user asks about identity, looks, pose, motion, or the current scene.";
 }
 
-function getOllamaMessages(currentPrompt = "") {
+function getOllamaMessages(currentPrompt = "", options = {}) {
+  const transcriptLines = options.transcriptLines || RECENT_TRANSCRIPT_LINES;
   const conversation = dialogueController.messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-RECENT_TRANSCRIPT_LINES);
-  const savedMemory = shouldIncludeSavedMemory(currentPrompt)
+    .slice(-transcriptLines);
+  const savedMemory = (options.includeSavedMemory ?? shouldIncludeSavedMemory(currentPrompt))
     ? formatMemorySection()
     : "Available but omitted for this turn because the latest user message does not ask about saved facts.";
   const memoryContext = [
     COMPANION_SYSTEM_PROMPT,
     "",
     "Current turn guidance:",
-    getCurrentTurnGuidance(currentPrompt),
+    options.currentTurnGuidance || getCurrentTurnGuidance(currentPrompt),
     "",
     "Saved memory:",
     savedMemory,
@@ -1798,7 +1826,7 @@ function getOllamaMessages(currentPrompt = "") {
     getCurrentAppearanceSnapshot(),
     "",
     "Recent transcript:",
-    formatRecentTranscript()
+    formatRecentTranscript(transcriptLines)
   ].join("\n");
   return [
     { role: "system", content: memoryContext },
@@ -1810,7 +1838,7 @@ function cleanCompanionReply(reply) {
   return reply.trim().replace(/^["“](.*)["”]$/s, "$1").trim();
 }
 
-async function requestOllamaReply(prompt) {
+async function requestOllamaReply(prompt, options = {}) {
   const response = await fetch("/ollama-chat", {
     method: "POST",
     headers: {
@@ -1818,7 +1846,12 @@ async function requestOllamaReply(prompt) {
     },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
-      messages: getOllamaMessages(prompt)
+      messages: options.appendPrompt
+        ? [
+            ...getOllamaMessages(prompt, options),
+            { role: "user", content: prompt }
+          ]
+        : getOllamaMessages(prompt, options)
     })
   });
 
