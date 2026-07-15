@@ -14,7 +14,7 @@
   "modelPreview": {
     "mode": "textured",
     "lighting": "native",
-    "motion": "casual-look-around",
+    "motion": "idle-breathe",
     "stageLighting": 0.35,
     "materialBoostStrength": 0,
     "saturation": 0.72,

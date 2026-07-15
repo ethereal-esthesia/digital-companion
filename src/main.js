@@ -92,6 +92,7 @@ const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
 const COMPANION_MEMORY_STORAGE_KEY = "digitalCompanion.vitaMemory";
 const COMPANION_CONTEXT_STORAGE_KEY = "digitalCompanion.contextLog";
+const COMPANION_SCHEDULER_STORAGE_KEY = "digitalCompanion.schedulerState";
 const DEMO_PROFILE_STORAGE_KEY = "digitalCompanion.demoProfile";
 const RECENT_TRANSCRIPT_LINES = 20;
 const PERSISTED_CONTEXT_LINES = 40;
@@ -146,9 +147,8 @@ const BREATHE_LOOP_SECONDS = 4.2;
 const IDLE_BREATHE_MOTION_ID = "idle-breathe";
 const CASUAL_LOOK_AROUND_MOTION_ID = "casual-look-around";
 const CASUAL_LOOK_AROUND_LOOP_SECONDS = BREATHE_LOOP_SECONDS * 4;
-const IDLE_INTERLUDE_MIN_SECONDS = 18;
-const IDLE_INTERLUDE_MAX_SECONDS = 38;
-const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
+const IDLE_RANDOM_TICK_FIRST_CHECK_SECONDS = BREATHE_LOOP_SECONDS;
+const IDLE_RANDOM_TICK_AVERAGE_SECONDS = 60;
 const MOTION_TRANSITION_MIN_SECONDS = 0.2;
 const MOTION_TRANSITION_LINEAR_MAX_SPEED = 0.35;
 const MOTION_TRANSITION_LINEAR_ACCELERATION = 1.4;
@@ -284,8 +284,10 @@ const motionController = {
   idleInterludeAction: null,
   idleInterludeFinishHandler: null,
   idleInterludeLoadingId: null,
+  idleInterludeMotionId: "",
+  idleInterludeTime: 0,
   idleInterludeClock: 0,
-  idleInterludeNextAt: BREATHE_LOOP_SECONDS,
+  idleInterludeNextAt: IDLE_RANDOM_TICK_AVERAGE_SECONDS,
   idleInterludeStartupPending: true,
   poseTransition: null
 };
@@ -1179,6 +1181,30 @@ function saveCompanionContext() {
   localStorage.setItem(COMPANION_CONTEXT_STORAGE_KEY, JSON.stringify(persistedMessages));
 }
 
+function loadCompanionSchedulerState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COMPANION_SCHEDULER_STORAGE_KEY) || "{}");
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function hasSchedulerCommandRun(command) {
+  return Boolean(loadCompanionSchedulerState().commands?.[command]);
+}
+
+function rememberSchedulerCommandRun(command) {
+  const schedulerState = loadCompanionSchedulerState();
+  schedulerState.commands = {
+    ...(schedulerState.commands || {}),
+    [command]: {
+      ranAt: new Date().toISOString()
+    }
+  };
+  localStorage.setItem(COMPANION_SCHEDULER_STORAGE_KEY, JSON.stringify(schedulerState));
+}
+
 function rememberCompanionFact(kind, fact) {
   const cleanFact = fact.trim();
   if (!cleanFact) {
@@ -1442,6 +1468,7 @@ function clearAllCompanionMemory() {
   dialogueController.messages = [];
   localStorage.removeItem(COMPANION_MEMORY_STORAGE_KEY);
   localStorage.removeItem(COMPANION_CONTEXT_STORAGE_KEY);
+  localStorage.removeItem(COMPANION_SCHEDULER_STORAGE_KEY);
   renderDialogueHistory();
 }
 
@@ -1503,14 +1530,14 @@ function getCurrentAppearanceSnapshot() {
   const selectedOutfitMorph = getSelectedControllerLabel(outfitMorphController, "Default outfit");
   const motionState = getMotionPlaybackState();
   const motionLabel = motionState.isInterludeActive
-    ? `${motionState.effectiveLabel} scheduler interlude; default ${motionState.selectedLabel}`
+    ? `${motionState.effectiveLabel} random tick interlude; default ${motionState.selectedLabel}`
     : motionState.selectedLabel;
   const nextInterlude = (
     motionState.selectedId === IDLE_BREATHE_MOTION_ID &&
     motionState.interludeLabel &&
     !motionState.isInterludeActive
   )
-    ? `Next scheduler motion: ${motionState.interludeLabel} ${motionState.interludeState === "startup-waiting" ? "after first breath loop" : `in about ${Math.ceil(motionState.interludeNextIn)}s`}`
+    ? `Random tick motion: ${motionState.interludeLabel} ${motionState.interludeState === "startup-waiting" ? "after first breath loop" : "checking about once a minute"}`
     : "";
   const stageLighting = Math.round(modelPreviewOptions.stageLighting * 100);
   const bloom = formatPreviewNumber(modelPreviewOptions.bloomStrength);
@@ -1678,17 +1705,24 @@ function getLastDialogueLine(role) {
   return null;
 }
 
+function hasDialogueLine(role, content) {
+  return dialogueController.messages.some(
+    (message) => message.role === role && message.content === content
+  );
+}
+
 function addAssistantDialogueReply(reply, options = {}) {
   const cleanReply = reply.trim();
   if (!cleanReply) {
-    return;
+    return false;
   }
   if (options.dedupeRecent && getLastDialogueLine("assistant")?.content === cleanReply) {
     showSpeechPhrase(cleanReply);
-    return;
+    return false;
   }
   addDialogueLine("assistant", cleanReply);
   showSpeechPhrase(cleanReply);
+  return true;
 }
 
 function hasStoredCompanionMemory() {
@@ -1720,7 +1754,18 @@ function getContinuationGreeting() {
 function runSchedulerCommand(command) {
   const normalizedCommand = command.trim().toLowerCase();
   if (normalizedCommand === "continue-greeting" || normalizedCommand === "continuation-greeting") {
-    addAssistantDialogueReply(getContinuationGreeting(), { dedupeRecent: true });
+    if (hasSchedulerCommandRun("continue-greeting")) {
+      return true;
+    }
+
+    const greeting = getContinuationGreeting();
+    if (hasDialogueLine("assistant", greeting)) {
+      rememberSchedulerCommandRun("continue-greeting");
+      return true;
+    }
+
+    addAssistantDialogueReply(greeting, { dedupeRecent: true });
+    rememberSchedulerCommandRun("continue-greeting");
     return true;
   }
 
@@ -1976,18 +2021,19 @@ function isProceduralMotionOption(option) {
   return option?.kind === "procedural";
 }
 
-function getIdleInterludeDelay() {
-  return THREE.MathUtils.randFloat(
-    IDLE_INTERLUDE_MIN_SECONDS,
-    IDLE_INTERLUDE_MAX_SECONDS
-  );
+function getIdleRandomTickProbability(delta) {
+  return 1 - Math.exp(-delta / IDLE_RANDOM_TICK_AVERAGE_SECONDS);
+}
+
+function getIdleInterludeOption() {
+  return getMotionModeOption(CASUAL_LOOK_AROUND_MOTION_ID);
 }
 
 function resetIdleInterludeSchedule({ startup = true } = {}) {
   motionController.idleInterludeClock = 0;
   motionController.idleInterludeNextAt = startup
-    ? BREATHE_LOOP_SECONDS
-    : getIdleInterludeDelay();
+    ? IDLE_RANDOM_TICK_FIRST_CHECK_SECONDS
+    : IDLE_RANDOM_TICK_AVERAGE_SECONDS;
   motionController.idleInterludeStartupPending = startup;
 }
 
@@ -2004,6 +2050,10 @@ function getIdleInterludeState() {
     return "playing";
   }
 
+  if (motionController.idleInterludeMotionId) {
+    return "playing";
+  }
+
   if (motionController.idleInterludeLoadingId) {
     return "loading";
   }
@@ -2013,7 +2063,7 @@ function getIdleInterludeState() {
 
 function getMotionPlaybackState() {
   const selectedOption = getMotionModeOption(modelPreviewOptions.motion);
-  const interludeOption = getProceduralBaseMotionOption();
+  const interludeOption = getIdleInterludeOption();
   const interludeState = getIdleInterludeState();
   const transition = motionController.poseTransition;
   const transitionOption = transition?.targetId
@@ -2025,7 +2075,8 @@ function getMotionPlaybackState() {
     (
       interludeState === "loading" ||
       interludeState === "playing" ||
-      interludeState === "transitioning-in"
+      interludeState === "transitioning-in" ||
+      interludeState === "transitioning-out"
     )
   );
   const effectiveOption = transition
@@ -2097,10 +2148,10 @@ function configureMotionOptions(state) {
     pickFirstChoice(
       [
         queryParams.get("modelMotion"),
-        savedDemoPreview.motion,
-        savedDemoPreview.modelMotion,
         configured.motion,
-        configured.modelMotion
+        configured.modelMotion,
+        savedDemoPreview.motion,
+        savedDemoPreview.modelMotion
       ],
       getMotionModeChoices(),
       STILL_MOTION_ID
@@ -2758,6 +2809,8 @@ function stopIdleInterlude() {
   motionController.idleInterludeMixer = null;
   motionController.idleInterludeAction = null;
   motionController.idleInterludeFinishHandler = null;
+  motionController.idleInterludeMotionId = "";
+  motionController.idleInterludeTime = 0;
 }
 
 function stopLoadedMotionPlayback() {
@@ -2877,70 +2930,70 @@ function finishIdleInterlude() {
   updateModelAssetStatus();
 }
 
-async function startIdleInterlude() {
-  const interludeOption = getProceduralBaseMotionOption();
+function startIdleInterlude() {
+  const interludeOption = getIdleInterludeOption();
 
   if (
     !interludeOption ||
-    !activeVrm?.scene ||
+    !motionController.proceduralBasePose ||
     modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
+    motionController.poseTransition ||
+    motionController.idleInterludeMotionId ||
     motionController.idleInterludeAction ||
     motionController.idleInterludeLoadingId
   ) {
     return;
   }
 
-  const loadingId = `${interludeOption.id}:${performance.now()}`;
-  motionController.idleInterludeLoadingId = loadingId;
   motionController.idleInterludeStartupPending = false;
+  const fromPose = getCurrentNormalizedPose();
+  const targetPose = buildProceduralPose(
+    interludeOption.id,
+    0,
+    motionController.proceduralBasePose
+  );
+  holdPoseForTransition(fromPose);
+  motionController.idleInterludeMotionId = interludeOption.id;
+  motionController.idleInterludeTime = 0;
+  motionController.proceduralTime = 0;
+  startPoseTransition(fromPose, targetPose, {
+    targetId: interludeOption.id,
+    targetLabel: interludeOption.label,
+    phase: "idle-interlude-in",
+    onComplete: () => {
+      motionController.idleInterludeMotionId = interludeOption.id;
+      motionController.idleInterludeTime = 0;
+      updateLocalModelDebug();
+      updateModelAssetStatus();
+    }
+  });
   updateLocalModelDebug();
   updateModelAssetStatus();
-
-  try {
-    const clip = await loadVrmAnimationClip(interludeOption);
-    if (
-      motionController.idleInterludeLoadingId !== loadingId ||
-      modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
-      !activeVrm?.scene
-    ) {
-      return;
-    }
-
-    motionController.idleInterludeLoadingId = null;
-    const fromPose = getCurrentNormalizedPose();
-    const targetPose = cloneNormalizedPose(motionController.proceduralBasePose);
-    holdPoseForTransition(fromPose);
-    motionController.proceduralTime = 0;
-    startPoseTransition(fromPose, targetPose, {
-      targetId: interludeOption.id,
-      targetLabel: interludeOption.label,
-      phase: "idle-interlude-in",
-      onComplete: () => startIdleInterludeClip(clip)
-    });
-    updateLocalModelDebug();
-    updateModelAssetStatus();
-  } catch (error) {
-    console.warn(
-      error instanceof Error
-        ? `Idle interlude failed to load: ${error.message}`
-        : "Idle interlude failed to load"
-    );
-    resetIdleInterludeSchedule({ startup: false });
-    updateLocalModelDebug();
-    updateModelAssetStatus();
-  } finally {
-    if (motionController.idleInterludeLoadingId === loadingId) {
-      motionController.idleInterludeLoadingId = null;
-    }
-  }
 }
 
 function updateIdleInterlude(delta) {
-  if (!motionController.idleInterludeMixer || !motionController.idleInterludeAction) {
+  if (motionController.idleInterludeMixer && motionController.idleInterludeAction) {
+    motionController.idleInterludeMixer.update(delta);
+    return true;
+  }
+
+  if (!motionController.idleInterludeMotionId) {
     return false;
   }
 
-  motionController.idleInterludeMixer.update(delta);
+  motionController.idleInterludeTime += Math.max(0, delta);
+  if (motionController.idleInterludeTime >= CASUAL_LOOK_AROUND_LOOP_SECONDS) {
+    finishIdleInterlude();
+    return true;
+  }
+
+  applyNormalizedPose(
+    buildProceduralPose(
+      motionController.idleInterludeMotionId,
+      motionController.idleInterludeTime,
+      motionController.proceduralBasePose
+    )
+  );
   return true;
 }
 
@@ -2949,9 +3002,10 @@ function updateIdleInterludeSchedule(delta) {
     delta <= 0 ||
     modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
     motionController.poseTransition ||
+    motionController.idleInterludeMotionId ||
     motionController.idleInterludeAction ||
     motionController.idleInterludeLoadingId ||
-    !getProceduralBaseMotionOption()
+    !getIdleInterludeOption()
   ) {
     return;
   }
@@ -2961,14 +3015,16 @@ function updateIdleInterludeSchedule(delta) {
     return;
   }
 
-  const neutralBreath = Math.abs(
-    getLoopSine(motionController.proceduralTime, BREATHE_LOOP_SECONDS)
-  );
-  if (neutralBreath > IDLE_INTERLUDE_NEUTRAL_THRESHOLD) {
+  if (motionController.idleInterludeStartupPending) {
+    motionController.idleInterludeStartupPending = false;
+    updateLocalModelDebug();
+    updateModelAssetStatus();
+  }
+  if (Math.random() > getIdleRandomTickProbability(delta)) {
     return;
   }
 
-  void startIdleInterlude();
+  startIdleInterlude();
 }
 
 function applyProceduralVrmMotion(delta) {
@@ -3376,10 +3432,10 @@ function getModelPreviewOptions(sceneConfig) {
     pickFirstChoice(
       [
         queryParams.get("modelMotion"),
-        savedDemoPreview.motion,
-        savedDemoPreview.modelMotion,
         configured.motion,
-        configured.modelMotion
+        configured.modelMotion,
+        savedDemoPreview.motion,
+        savedDemoPreview.modelMotion
       ],
       getMotionModeChoices(),
       STILL_MOTION_ID
