@@ -13,6 +13,8 @@
     "demo": "node scripts/run-demo.mjs",
     "demo:build": "node scripts/run-demo.mjs --build-only",
     "demo:preview": "node scripts/run-demo.mjs --no-build",
+    "linux:install-demo": "bash scripts/install-demo-linux-service.sh",
+    "linux:setup-ollama": "bash scripts/setup-ollama-linux.sh",
     "preview": "vite --host 127.0.0.1",
     "resources:download": "node scripts/download-resources.mjs",
     "resources:download:cmu": "node scripts/download-cmu-mocap.mjs",

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { killPort } from "./process-utils.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4173;
@@ -12,8 +13,7 @@ const DEMO_CONFIG_DIR = "public/demo-configs";
 const DIST_DEMO_PROFILE_PATH = "dist/demo-profile.json";
 const DIST_DEMO_HTML_PATH = "dist/demo.html";
 const DIST_INDEX_HTML_PATH = "dist/index.html";
-const SHUTDOWN_TIMEOUT_MS = 2500;
-const VALUE_OPTIONS = new Set(["--host", "--port"]);
+const VALUE_OPTIONS = new Set(["--host", "--port", "--base"]);
 
 function readOption(name, fallback) {
   const prefix = `${name}=`;
@@ -59,87 +59,15 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-function run(command, args) {
+function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: "inherit",
-    shell: process.platform === "win32"
+    shell: process.platform === "win32",
+    env: options.env || process.env
   });
 
   if (result.status !== 0) {
     process.exit(result.status || 1);
-  }
-}
-
-function pidExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function findPortPids(port) {
-  try {
-    return execFileSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"], {
-      encoding: "utf8"
-    })
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(Number)
-      .filter(Number.isFinite);
-  } catch {
-    return [];
-  }
-}
-
-async function waitForExit(pids, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (pids.every((pid) => !pidExists(pid))) {
-      return true;
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 100);
-    });
-  }
-
-  return pids.every((pid) => !pidExists(pid));
-}
-
-async function killPort(port) {
-  const pids = findPortPids(port);
-
-  if (pids.length === 0) {
-    return;
-  }
-
-  console.log(`Stopping ${pids.length} process(es) on port ${port}: ${pids.join(", ")}`);
-
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // The process may have exited between lsof and kill.
-    }
-  }
-
-  if (await waitForExit(pids, SHUTDOWN_TIMEOUT_MS)) {
-    return;
-  }
-
-  const remaining = pids.filter(pidExists);
-  if (remaining.length > 0) {
-    console.log(`Force stopping process(es): ${remaining.join(", ")}`);
-    for (const pid of remaining) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-        // Nothing left to kill.
-      }
-    }
   }
 }
 
@@ -209,6 +137,7 @@ function syncDemoPageToRoot() {
 
 const host = readOption("--host", process.env.HOST || DEFAULT_HOST);
 const port = Number(readOption("--port", process.env.PORT || DEFAULT_PORT));
+const basePath = readOption("--base", process.env.SOULECHO_BASE_PATH || "/");
 const buildOnly = hasFlag("--build-only");
 const skipBuild = hasFlag("--no-build");
 const configuration = slugify(getPositionalArgument(DEFAULT_CONFIGURATION)) || DEFAULT_CONFIGURATION;
@@ -225,7 +154,12 @@ console.log(`Demo profile: ${profile.modelPresetLabel || profile.modelPresetAsse
 
 if (!skipBuild) {
   console.log("Building public demo bundle...");
-  run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"]);
+  run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], {
+    env: {
+      ...process.env,
+      SOULECHO_BASE_PATH: basePath
+    }
+  });
 }
 
 syncSelectedProfileToDist(profilePath);

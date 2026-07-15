@@ -158,6 +158,13 @@ http://127.0.0.1:4173/
 
 For deploy packaging or CI, use `npm run demo:build -- sameko`. The public demo page loads only the compiled profile instead of the full local model catalog.
 
+For a path-mounted deployment, pass the public base path before the profile name:
+
+```bash
+npm run demo:build -- --base /soulecho/demo/ astera
+npm run demo:preview -- --host 127.0.0.1 --port 4173 --base /soulecho/demo/ astera
+```
+
 ### Local companion chat
 
 The prototype can talk to a local Ollama server through the dev server bridge. The default lightweight model is:
@@ -167,6 +174,26 @@ ollama pull llama3.2:3b
 ```
 
 Start Ollama, run the app, and use the dialogue console at the top of the scene.
+
+On Debian/Ubuntu Linux, the setup script installs Ollama as a localhost-only
+systemd service and pulls the default model:
+
+```bash
+npm run linux:setup-ollama
+```
+
+To install the Astera demo as a systemd service:
+
+```bash
+npm run linux:install-demo
+```
+
+Useful overrides:
+
+```bash
+OLLAMA_MODEL=llama3.2:3b npm run linux:setup-ollama
+SOULECHO_BASE_PATH=/soulecho/demo/ SOULECHO_PORT=4173 npm run linux:install-demo
+```
 
 The console supports lightweight local memory:
 

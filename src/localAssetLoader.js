@@ -1,8 +1,4 @@
-const DEFAULT_CONFIG_URL = "/local-resources/original-video-assets/config.json";
-const FALLBACK_CONFIG_URL = "/resources/original-video-assets/config.example.json";
-const DISCOVERED_MODEL_PRESETS_URL = "/local-model-presets.json";
-const DISCOVERED_MOTION_PRESETS_URL = "/local-motion-presets.json";
-const DEMO_PROFILE_URL = "/demo-profile.json";
+const APP_BASE_URL = import.meta.env.BASE_URL || "/";
 
 const ASSET_ORDER = ["model", "stage", "motion", "camera", "facial", "audio"];
 const MODEL_PRESET_QUERY_KEY = "modelPreset";
@@ -20,6 +16,16 @@ function joinUrl(root, path) {
   }
   return `${root.replace(/\/?$/, "/")}${trimSlashes(path)}`;
 }
+
+function appUrl(path) {
+  return joinUrl(APP_BASE_URL, path);
+}
+
+const DEFAULT_CONFIG_URL = appUrl("local-resources/original-video-assets/config.json");
+const FALLBACK_CONFIG_URL = appUrl("resources/original-video-assets/config.example.json");
+const DISCOVERED_MODEL_PRESETS_URL = appUrl("local-model-presets.json");
+const DISCOVERED_MOTION_PRESETS_URL = appUrl("local-motion-presets.json");
+const DEMO_PROFILE_URL = appUrl("demo-profile.json");
 
 function expectsBinaryAsset(url) {
   return /\.(pmx|pmd|vrm|vrma|vmd|vpd|mp3|wav|ogg|flac|zip|unitypackage|fbx|blend|png|jpe?g|bmp|tga)(?:[?#]|$)/i.test(url);

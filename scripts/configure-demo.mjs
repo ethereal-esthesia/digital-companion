@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { killPort } from "./process-utils.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 5173;
 const DEFAULT_CONFIGURATION = "default";
-const SHUTDOWN_TIMEOUT_MS = 2500;
 const VALUE_OPTIONS = new Set(["--host", "--port"]);
 
 function readOption(name, fallback) {
@@ -47,79 +47,6 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function pidExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function findPortPids(port) {
-  try {
-    return execFileSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"], {
-      encoding: "utf8"
-    })
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(Number)
-      .filter(Number.isFinite);
-  } catch {
-    return [];
-  }
-}
-
-async function waitForExit(pids, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (pids.every((pid) => !pidExists(pid))) {
-      return true;
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 100);
-    });
-  }
-
-  return pids.every((pid) => !pidExists(pid));
-}
-
-async function killPort(port) {
-  const pids = findPortPids(port);
-
-  if (pids.length === 0) {
-    return;
-  }
-
-  console.log(`Stopping ${pids.length} process(es) on port ${port}: ${pids.join(", ")}`);
-
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // The process may have exited between lsof and kill.
-    }
-  }
-
-  if (await waitForExit(pids, SHUTDOWN_TIMEOUT_MS)) {
-    return;
-  }
-
-  const remaining = pids.filter(pidExists);
-  if (remaining.length > 0) {
-    console.log(`Force stopping process(es): ${remaining.join(", ")}`);
-    for (const pid of remaining) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-        // Nothing left to kill.
-      }
-    }
-  }
 }
 
 function viteCommand() {

@@ -472,6 +472,7 @@ function localModelPresetPlugin() {
 }
 
 export default defineConfig({
+  base: process.env.SOULECHO_BASE_PATH || "/",
   build: {
     rollupOptions: {
       input: {
