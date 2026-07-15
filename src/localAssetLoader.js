@@ -15,7 +15,7 @@ function joinUrl(root, path) {
   if (!path) {
     return "";
   }
-  if (/^(https?:|file:|blob:|data:)/i.test(path)) {
+  if (/^(https?:|file:|blob:|data:|procedural:)/i.test(path)) {
     return path;
   }
   return `${root.replace(/\/?$/, "/")}${trimSlashes(path)}`;
@@ -58,6 +58,10 @@ async function fetchDiscoveredMotionPresets() {
 async function probeAsset(url) {
   if (!url) {
     return { ok: false, status: 0, bytes: 0 };
+  }
+
+  if (/^procedural:/i.test(url)) {
+    return { ok: true, status: 200, bytes: 0 };
   }
 
   try {

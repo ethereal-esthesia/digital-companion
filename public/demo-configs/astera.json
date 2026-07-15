@@ -1,0 +1,26 @@
+{
+  "configuration": "astera",
+  "savedAt": "2026-07-13T20:01:46.251Z",
+  "assetRoot": "/local-resources/original-video-assets/",
+  "modelPreset": "procedural-astera",
+  "modelPresetLabel": "Astera",
+  "modelPresetAsset": {
+    "id": "procedural-astera",
+    "label": "Astera",
+    "path": "procedural:astera",
+    "kind": "procedural",
+    "required": true
+  },
+  "modelPreview": {
+    "mode": "textured",
+    "lighting": "native",
+    "motion": "idle-breathe",
+    "stageLighting": 0.35,
+    "materialBoostStrength": 0,
+    "saturation": 0.72,
+    "bloomStrength": 0,
+    "cameraZoom": 1,
+    "readingWpm": 200
+  },
+  "motionPresets": []
+}

@@ -1664,8 +1664,12 @@ function updateSpeechBubblePosition() {
   speechBubble.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-16%, -100%)`;
 }
 
-function animateDancer(t) {
-  const parts = dancer.userData.parts;
+function animateDancer(t, dancer = activeDancer) {
+  const parts = dancer?.userData?.parts;
+  if (!parts) {
+    return;
+  }
+
   const beat = Math.sin(t * 6.2);
   const halfBeat = Math.sin(t * 3.1);
   const quick = Math.sin(t * 12.4);
@@ -4230,6 +4234,51 @@ function activateLoadedModel(mesh, modelAsset, { kind = getModelKind(modelAsset)
   return realDancer;
 }
 
+function activateProceduralDancer(modelAsset) {
+  modelPreviewOptions = getModelPreviewOptions(localAssetState?.scene);
+  updatePreviewControls();
+
+  realDancer = null;
+  activeVrm = null;
+  activeModelKind = "procedural";
+  motionController.clipCache.clear();
+
+  const dancer = createDancer();
+  dancer.name = modelAsset.label || "Astera";
+  dancer.userData.procedural = true;
+  activeDancer = dancer;
+  window.localModel = dancer;
+  window.localVrm = null;
+
+  stage.visible = true;
+  modelPreview.visible = false;
+  modelAmbientLight.visible = false;
+  modelFillLight.visible = false;
+  modelSideLight.visible = false;
+  modelHairLight.visible = false;
+  scene.fog = null;
+  applyModelPreviewLighting();
+
+  assetStatus.dataset.state = "ready";
+  assetStatus.innerHTML = `
+    <span>Procedural model</span>
+    <strong>${dancer.name}</strong>
+    <small>#07090f suit · ${modelPreviewOptions.motion} · sat ${formatPreviewNumber(modelPreviewOptions.saturation)} · stage ${Math.round(modelPreviewOptions.stageLighting * 100)}%</small>
+  `;
+
+  window.localModelDebug = {
+    name: dancer.name,
+    kind: activeModelKind,
+    modelPath: modelAsset.path,
+    modelPreset: modelAsset.id || "astera",
+    suit: "#07090f",
+    motion: modelPreviewOptions.motion,
+    visible: dancer.visible
+  };
+
+  return dancer;
+}
+
 function loadPmxModel(modelAsset) {
   const loader = new MMDLoader();
   const kind = getModelKind(modelAsset);
@@ -4279,6 +4328,10 @@ function loadConfiguredModel(state) {
   `;
 
   const kind = getModelKind(modelAsset);
+  if (kind === "procedural") {
+    return Promise.resolve(activateProceduralDancer(modelAsset));
+  }
+
   return kind === "vrm" ? loadVrmModel(modelAsset) : loadPmxModel(modelAsset);
 }
 
@@ -4294,6 +4347,12 @@ function render() {
     updateBlink(animationDelta);
     activeVrm?.update?.(animationDelta);
     applyModelPreviewLighting();
+  }
+  if (activeDancer && !realDancer) {
+    animateDancer(elapsed);
+  }
+  if (stage.visible) {
+    animateStage(elapsed);
   }
   updateCamera(elapsed);
   updateSpeechBubblePosition();
