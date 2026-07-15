@@ -203,7 +203,7 @@ body,
   z-index: 4;
   display: grid;
   gap: 6px;
-  width: clamp(290px, 42vw, 560px);
+  width: 310px;
   max-width: calc(100vw - 28px);
   pointer-events: auto;
 }
@@ -1317,7 +1317,6 @@ html[data-app-mode="demo"] .dialogue-stack {
   left: clamp(14px, 3vw, 34px);
   top: auto;
   bottom: clamp(14px, 3vh, 28px);
-  width: clamp(290px, 34vw, 480px);
 }
 
 html[data-app-mode="demo"] .hud {
@@ -1383,10 +1382,6 @@ html[data-app-mode="demo"] .meter {
     display: none;
   }
 
-  .dialogue-stack {
-    width: min(52vw, 430px);
-  }
-
   .speech-bubble {
     width: clamp(184px, 42vw, 258px);
     min-height: clamp(74px, 18vw, 108px);
@@ -1416,7 +1411,6 @@ html[data-app-mode="demo"] .meter {
 
   .dialogue-stack {
     left: 12px;
-    width: calc(100vw - 24px);
   }
 
   .dialogue-history {
@@ -1461,10 +1455,4 @@ html[data-app-mode="demo"] .meter {
 html[data-app-mode="demo"] .dialogue-stack {
   top: auto;
   bottom: clamp(14px, 3vh, 28px);
-}
-
-@media (max-width: 480px) {
-  html[data-app-mode="demo"] .dialogue-stack {
-    width: calc(100vw - 82px);
-  }
 }
