@@ -89,7 +89,8 @@ const TEST_SPEECH_PHRASES = [
 const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3.2:3b";
 const APP_BASE_URL = import.meta.env.BASE_URL || "/";
 const DEFAULT_APP_SETTINGS = {
-  profileMetadataExtraction: import.meta.env.VITE_PROFILE_METADATA_EXTRACTION !== "0"
+  profileMetadataExtraction: import.meta.env.VITE_PROFILE_METADATA_EXTRACTION !== "0",
+  maxConsoleMemoryLines: Number(import.meta.env.VITE_MAX_CONSOLE_MEMORY_LINES || 40)
 };
 const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =
@@ -122,8 +123,12 @@ function appUrl(path) {
 }
 
 function normalizeAppSettings(settings = {}) {
+  const maxConsoleMemoryLines = Number(settings.maxConsoleMemoryLines);
   return {
-    profileMetadataExtraction: settings.profileMetadataExtraction !== false
+    profileMetadataExtraction: settings.profileMetadataExtraction !== false,
+    maxConsoleMemoryLines: Number.isFinite(maxConsoleMemoryLines) && maxConsoleMemoryLines >= 0
+      ? Math.floor(maxConsoleMemoryLines)
+      : 40
   };
 }
 
@@ -135,9 +140,29 @@ async function loadAppSettings() {
     }
 
     appSettings = normalizeAppSettings(await response.json());
+    trimCompanionContextToLimit();
   } catch (error) {
     console.warn("App settings unavailable", error);
   }
+}
+
+function getMaxConsoleMemoryLines() {
+  const maxConsoleMemoryLines = Number(appSettings.maxConsoleMemoryLines);
+  return Number.isFinite(maxConsoleMemoryLines)
+    ? Math.max(0, Math.floor(maxConsoleMemoryLines))
+    : 40;
+}
+
+function getRecentTranscriptLineLimit(limit = RECENT_TRANSCRIPT_LINES) {
+  return Math.max(0, Math.min(limit, getMaxConsoleMemoryLines()));
+}
+
+function takeLastItems(items, count) {
+  if (count <= 0) {
+    return [];
+  }
+
+  return items.slice(-count);
 }
 
 const SATURATION_SHADER = {
@@ -1199,7 +1224,7 @@ function loadCompanionContext() {
       return [];
     }
 
-    return stored
+    const normalizedMessages = stored
       .filter((message) =>
         (message.role === "user" || message.role === "assistant") &&
         typeof message.content === "string" &&
@@ -1208,18 +1233,31 @@ function loadCompanionContext() {
       .map((message) => ({
         role: message.role,
         content: message.content.trim()
-      }))
-      .slice(-PERSISTED_CONTEXT_LINES);
+      }));
+    return takeLastItems(normalizedMessages, getMaxConsoleMemoryLines());
   } catch {
     return [];
   }
 }
 
+function trimCompanionContextToLimit() {
+  const maxConsoleMemoryLines = getMaxConsoleMemoryLines();
+  const nextMessages = dialogueController.messages.filter(
+    (message) => message.role !== "user" && message.role !== "assistant"
+  );
+  const consoleMessages = dialogueController.messages
+    .filter((message) => message.role === "user" || message.role === "assistant");
+
+  dialogueController.messages = [...nextMessages, ...takeLastItems(consoleMessages, maxConsoleMemoryLines)];
+  saveCompanionContext();
+  renderDialogueHistory();
+}
+
 function saveCompanionContext() {
   const persistedMessages = dialogueController.messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-PERSISTED_CONTEXT_LINES);
-  localStorage.setItem(COMPANION_CONTEXT_STORAGE_KEY, JSON.stringify(persistedMessages));
+    .filter((message) => message.role === "user" || message.role === "assistant");
+  const limitedMessages = takeLastItems(persistedMessages, getMaxConsoleMemoryLines());
+  localStorage.setItem(COMPANION_CONTEXT_STORAGE_KEY, JSON.stringify(limitedMessages));
 }
 
 function rememberCompanionFact(kind, fact) {
@@ -1479,15 +1517,16 @@ function getCatchyCharacterName() {
 }
 
 function formatRecentTranscript(limit = RECENT_TRANSCRIPT_LINES) {
+  const transcriptLineLimit = getRecentTranscriptLineLimit(limit);
   const conversation = dialogueController.messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-limit);
+    .filter((message) => message.role === "user" || message.role === "assistant");
+  const recentConversation = takeLastItems(conversation, transcriptLineLimit);
 
-  if (conversation.length === 0) {
+  if (recentConversation.length === 0) {
     return "No prior session lines.";
   }
 
-  return conversation
+  return recentConversation
     .map((message) => `${message.role === "user" ? "User" : getCatchyCharacterName()}: ${message.content}`)
     .join("\n");
 }
@@ -1499,7 +1538,8 @@ function getMemorySummary() {
   const contextCount = dialogueController.messages.filter(
     (message) => message.role === "user" || message.role === "assistant"
   ).length;
-  return `${userCount} user fact${userCount === 1 ? "" : "s"}, ${websiteCount} website fact${websiteCount === 1 ? "" : "s"}, ${interestCount} interest${interestCount === 1 ? "" : "s"}, ${Math.min(contextCount, PERSISTED_CONTEXT_LINES)} context line${contextCount === 1 ? "" : "s"}`;
+  const contextLimit = getMaxConsoleMemoryLines();
+  return `${userCount} user fact${userCount === 1 ? "" : "s"}, ${websiteCount} website fact${websiteCount === 1 ? "" : "s"}, ${interestCount} interest${interestCount === 1 ? "" : "s"}, ${Math.min(contextCount, contextLimit)} context line${contextCount === 1 ? "" : "s"}`;
 }
 
 function clearAllCompanionMemory() {
@@ -1518,15 +1558,18 @@ function getStoredMetadataSnapshot() {
       context: COMPANION_CONTEXT_STORAGE_KEY
     },
     limits: {
-      contextLines: PERSISTED_CONTEXT_LINES,
-      recentTranscriptLinesSentToOllama: RECENT_TRANSCRIPT_LINES
+      contextLines: getMaxConsoleMemoryLines(),
+      recentTranscriptLinesSentToOllama: getRecentTranscriptLineLimit()
     },
     profile: { ...dialogueController.memory.profile },
     userFacts: [...dialogueController.memory.user],
     websiteFacts: [...dialogueController.memory.website],
-    contextLog: dialogueController.messages
-      .filter((message) => message.role === "user" || message.role === "assistant")
-      .slice(-PERSISTED_CONTEXT_LINES)
+    contextLog: takeLastItems(
+      dialogueController.messages.filter(
+        (message) => message.role === "user" || message.role === "assistant"
+      ),
+      getMaxConsoleMemoryLines()
+    )
   };
 }
 
@@ -1848,10 +1891,10 @@ function getCurrentTurnGuidance(prompt) {
 }
 
 function getOllamaMessages(currentPrompt = "", options = {}) {
-  const transcriptLines = options.transcriptLines || RECENT_TRANSCRIPT_LINES;
+  const transcriptLines = getRecentTranscriptLineLimit(options.transcriptLines || RECENT_TRANSCRIPT_LINES);
   const conversation = dialogueController.messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .slice(-transcriptLines);
+    .filter((message) => message.role === "user" || message.role === "assistant");
+  const recentConversation = takeLastItems(conversation, transcriptLines);
   const savedMemory = (options.includeSavedMemory ?? shouldIncludeSavedMemory(currentPrompt))
     ? formatMemorySection()
     : "Available but omitted for this turn because the latest user message does not ask about saved facts.";
@@ -1872,7 +1915,7 @@ function getOllamaMessages(currentPrompt = "", options = {}) {
   ].join("\n");
   return [
     { role: "system", content: memoryContext },
-    ...conversation
+    ...recentConversation
   ];
 }
 

@@ -19,6 +19,7 @@ SOULECHO_BASE_PATH="${SOULECHO_BASE_PATH:-/soulecho/demo/}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:3b}"
 PROFILE_METADATA_EXTRACTION="${PROFILE_METADATA_EXTRACTION:-1}"
+MAX_CONSOLE_MEMORY_LINES="${MAX_CONSOLE_MEMORY_LINES:-40}"
 RUN_OLLAMA_SETUP="${RUN_OLLAMA_SETUP:-1}"
 MIN_NODE_MAJOR="${MIN_NODE_MAJOR:-20}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
@@ -84,6 +85,7 @@ prepare_project() {
     SOULECHO_BASE_PATH="$SOULECHO_BASE_PATH" \
     VITE_OLLAMA_MODEL="$OLLAMA_MODEL" \
     VITE_PROFILE_METADATA_EXTRACTION="$PROFILE_METADATA_EXTRACTION" \
+    VITE_MAX_CONSOLE_MEMORY_LINES="$MAX_CONSOLE_MEMORY_LINES" \
     npm --prefix "$APP_DIR" run demo:build -- "$DEMO_CONFIGURATION"
 
   local metadata_enabled=true
@@ -93,7 +95,8 @@ prepare_project() {
 
   cat > "$APP_DIR/dist/app-settings.json" <<EOF
 {
-  "profileMetadataExtraction": $metadata_enabled
+  "profileMetadataExtraction": $metadata_enabled,
+  "maxConsoleMemoryLines": $MAX_CONSOLE_MEMORY_LINES
 }
 EOF
   chown "$APP_USER:$APP_GROUP" "$APP_DIR/dist/app-settings.json"
@@ -118,6 +121,7 @@ Environment=SOULECHO_BASE_PATH=$SOULECHO_BASE_PATH
 Environment=OLLAMA_URL=$OLLAMA_URL
 Environment=OLLAMA_MODEL=$OLLAMA_MODEL
 Environment=PROFILE_METADATA_EXTRACTION=$PROFILE_METADATA_EXTRACTION
+Environment=MAX_CONSOLE_MEMORY_LINES=$MAX_CONSOLE_MEMORY_LINES
 ExecStart=/usr/bin/npm run demo:preview -- --host $SOULECHO_HOST --port $SOULECHO_PORT --base $SOULECHO_BASE_PATH $DEMO_CONFIGURATION
 Restart=on-failure
 RestartSec=3

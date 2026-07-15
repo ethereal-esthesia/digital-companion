@@ -1,3 +1,4 @@
 {
-  "profileMetadataExtraction": true
+  "profileMetadataExtraction": true,
+  "maxConsoleMemoryLines": 40
 }
