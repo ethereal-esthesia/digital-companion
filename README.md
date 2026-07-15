@@ -67,13 +67,21 @@ Models, animations, motions and textures are loaded from the local `resources/` 
 
 Eventually any compatible assets placed into the resource folders should become available automatically without modifying application code.
 
+The bundled public demo profile uses the Astera VRM sample at:
+
+```text
+public/characters/astera/Astera.vrm
+```
+
+Astera is a renamed copy of the Vita VRoid Studio sample model from the `madjin/vrm-samples` mirror. The embedded VRM metadata lists the model license as `CC0`; see `public/characters/astera/README.md` for source and license references.
+
 For quick model testing, place one model folder per character under:
 
 ```text
 local-resources/original-video-assets/model/vrm-samples/
 ```
 
-On dev server start, each immediate child folder with a `.vrm`, `.pmx`, or `.pmd` file is added to the model dropdown using the folder name as its label.
+`local-resources/` is ignored by git and should hold user-supplied or locally licensed assets only. Copy `resources/original-video-assets/config.example.json` to `local-resources/original-video-assets/config.json` when you need a local asset catalog. On dev server start, each immediate child folder with a `.vrm`, `.pmx`, or `.pmd` file is added to the model dropdown using the folder name as its label.
 
 Planned supported formats include:
 
@@ -138,7 +146,7 @@ public/demo-configs/<name>.json
 public/demo-profile.json
 ```
 
-Run the default compiled demo locally with:
+Run the default Astera compiled demo locally with:
 
 ```bash
 npm run demo
@@ -156,7 +164,7 @@ npm run run -- sameko
 http://127.0.0.1:4173/
 ```
 
-For deploy packaging or CI, use `npm run demo:build -- sameko`. The public demo page loads only the compiled profile instead of the full local model catalog.
+For deploy packaging or CI, use `npm run demo:build -- astera`. The public demo page loads only the compiled profile instead of the full local model catalog.
 
 For a path-mounted deployment, pass the public base path before the profile name:
 
@@ -164,6 +172,21 @@ For a path-mounted deployment, pass the public base path before the profile name
 npm run demo:build -- --base /soulecho/demo/ astera
 npm run demo:preview -- --host 127.0.0.1 --port 4173 --base /soulecho/demo/ astera
 ```
+
+### Runtime settings
+
+The app reads `public/app-settings.json` in development. The tracked defaults favor local iteration:
+
+```json
+{
+  "profileMetadataExtraction": true,
+  "maxConsoleMemoryLines": 40
+}
+```
+
+Linux deploys generate `dist/app-settings.json` during build. Production currently uses `profileMetadataExtraction: false` and `maxConsoleMemoryLines: 2` unless overridden by deploy environment variables.
+
+When installing SoulEcho directly, copy values from `.env.example` into your shell or a local `.env`/`.env.local` file. Those files are ignored; keep machine-specific ports, users, and model choices there.
 
 ### Local companion chat
 
@@ -193,6 +216,7 @@ Useful overrides:
 ```bash
 OLLAMA_MODEL=llama3.2:3b npm run linux:setup-ollama
 SOULECHO_BASE_PATH=/soulecho/demo/ SOULECHO_PORT=4173 npm run linux:install-demo
+PROFILE_METADATA_EXTRACTION=0 MAX_CONSOLE_MEMORY_LINES=2 npm run linux:install-demo
 ```
 
 The console supports lightweight local memory:

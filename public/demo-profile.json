@@ -1,13 +1,13 @@
 {
-  "configuration": "vita",
-  "savedAt": "2026-07-13T20:01:46.251Z",
-  "assetRoot": "/local-resources/original-video-assets/",
-  "modelPreset": "vrm-sample-vita",
-  "modelPresetLabel": "Vita",
+  "configuration": "astera",
+  "savedAt": "2026-07-15T01:03:30.000Z",
+  "assetRoot": ".",
+  "modelPreset": "astera",
+  "modelPresetLabel": "Astera",
   "modelPresetAsset": {
-    "id": "vrm-sample-vita",
-    "label": "Vita",
-    "path": "model/vrm-samples/Vita/Vita.vrm",
+    "id": "astera",
+    "label": "Astera",
+    "path": "characters/astera/Astera.vrm",
     "kind": "vrm",
     "required": true
   },
@@ -22,13 +22,15 @@
     "cameraZoom": 1,
     "readingWpm": 200
   },
-  "motionPresets": [
-    {
-      "id": "vroid-show-full-body",
-      "label": "Show full body",
-      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_01.vrma",
-      "kind": "vrma",
-      "required": true
-    }
-  ]
+  "motionPresets": [],
+  "scheduler": {
+    "enabled": true,
+    "events": [
+      {
+        "at": 2.8,
+        "type": "command",
+        "command": "continue-greeting"
+      }
+    ]
+  }
 }

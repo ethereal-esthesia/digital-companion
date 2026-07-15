@@ -1,13 +1,13 @@
 {
   "configuration": "default",
-  "savedAt": "2026-07-13T17:40:25.653Z",
-  "assetRoot": "/local-resources/original-video-assets/",
-  "modelPreset": "sameko-saba-abakat",
-  "modelPresetLabel": "Sameko Saba (Abakat VRM)",
+  "savedAt": "2026-07-15T01:03:30.000Z",
+  "assetRoot": ".",
+  "modelPreset": "astera",
+  "modelPresetLabel": "Astera",
   "modelPresetAsset": {
-    "id": "sameko-saba-abakat",
-    "label": "Sameko Saba (Abakat VRM)",
-    "path": "model/sameko-saba-abakat/VRM/Sameko Saba VRM.vrm",
+    "id": "astera",
+    "label": "Astera",
+    "path": "characters/astera/Astera.vrm",
     "kind": "vrm",
     "required": true
   },
@@ -15,20 +15,22 @@
     "mode": "textured",
     "lighting": "native",
     "motion": "idle-breathe",
-    "stageLighting": 0.58,
-    "materialBoostStrength": 0.54,
-    "saturation": 1.47,
+    "stageLighting": 0.35,
+    "materialBoostStrength": 0,
+    "saturation": 0.72,
     "bloomStrength": 0,
-    "cameraZoom": 0.9932729022114903,
-    "readingWpm": 400
+    "cameraZoom": 1,
+    "readingWpm": 200
   },
-  "motionPresets": [
-    {
-      "id": "vroid-show-full-body",
-      "label": "Show full body",
-      "path": "motion/vroid-project-vrma/VRMA_MotionPack/vrma/VRMA_01.vrma",
-      "kind": "vrma",
-      "required": true
-    }
-  ]
+  "motionPresets": [],
+  "scheduler": {
+    "enabled": true,
+    "events": [
+      {
+        "at": 2.8,
+        "type": "command",
+        "command": "continue-greeting"
+      }
+    ]
+  }
 }
