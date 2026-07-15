@@ -141,10 +141,18 @@ async function loadAppSettings() {
     }
 
     appSettings = normalizeAppSettings(await response.json());
+    dialogueController.memory = normalizeCompanionMemory(dialogueController.memory);
+    if (!isProfileMetadataEnabled()) {
+      saveCompanionMemory();
+    }
     trimCompanionContextToLimit();
   } catch (error) {
     console.warn("App settings unavailable", error);
   }
+}
+
+function isProfileMetadataEnabled() {
+  return appSettings.profileMetadataExtraction !== false;
 }
 
 function getMaxConsoleMemoryLines() {
@@ -1198,23 +1206,66 @@ function normalizeUserProfile(profile = {}) {
   };
 }
 
+function getDefaultCompanionMemory() {
+  const memory = { user: [], website: [] };
+  if (isProfileMetadataEnabled()) {
+    memory.profile = getDefaultUserProfile();
+  }
+  return memory;
+}
+
+function normalizeCompanionMemory(memory = {}) {
+  const normalizedMemory = {
+    user: Array.isArray(memory.user) ? memory.user : [],
+    website: Array.isArray(memory.website) ? memory.website : []
+  };
+
+  if (isProfileMetadataEnabled()) {
+    normalizedMemory.profile = normalizeUserProfile(memory.profile);
+  }
+
+  return normalizedMemory;
+}
+
+function getCompanionProfile() {
+  return dialogueController.memory.profile || getDefaultUserProfile();
+}
+
+function ensureCompanionProfile() {
+  if (!isProfileMetadataEnabled()) {
+    return null;
+  }
+
+  if (!dialogueController.memory.profile) {
+    dialogueController.memory.profile = getDefaultUserProfile();
+  }
+
+  return dialogueController.memory.profile;
+}
+
 function loadCompanionMemory() {
   try {
     const stored = JSON.parse(localStorage.getItem(COMPANION_MEMORY_STORAGE_KEY) || "{}");
-    return {
-      user: Array.isArray(stored.user) ? stored.user : [],
-      website: Array.isArray(stored.website) ? stored.website : [],
-      profile: normalizeUserProfile(stored.profile)
-    };
+    return normalizeCompanionMemory(stored);
   } catch {
-    return { user: [], website: [], profile: getDefaultUserProfile() };
+    return getDefaultCompanionMemory();
   }
 }
 
 function saveCompanionMemory() {
+  const memory = normalizeCompanionMemory(dialogueController.memory);
+  if (
+    !isProfileMetadataEnabled() &&
+    memory.user.length === 0 &&
+    memory.website.length === 0
+  ) {
+    localStorage.removeItem(COMPANION_MEMORY_STORAGE_KEY);
+    return;
+  }
+
   localStorage.setItem(
     COMPANION_MEMORY_STORAGE_KEY,
-    JSON.stringify(dialogueController.memory)
+    JSON.stringify(memory)
   );
 }
 
@@ -1276,26 +1327,36 @@ function rememberCompanionFact(kind, fact) {
 }
 
 function setUserName(name) {
+  const profile = ensureCompanionProfile();
+  if (!profile) {
+    return false;
+  }
+
   const cleanName = formatUserName(name);
   if (!isUsableUserName(cleanName)) {
     return false;
   }
 
-  dialogueController.memory.profile.userName = cleanName;
+  profile.userName = cleanName;
   saveCompanionMemory();
   return true;
 }
 
 function rememberInterest(interest) {
+  const profile = ensureCompanionProfile();
+  if (!profile) {
+    return false;
+  }
+
   const cleanInterest = interest.trim();
   if (!cleanInterest) {
     return false;
   }
 
-  const interests = dialogueController.memory.profile.interests;
+  const interests = profile.interests;
   if (!interests.some((stored) => stored.toLowerCase() === cleanInterest.toLowerCase())) {
     interests.push(cleanInterest);
-    dialogueController.memory.profile.interests = interests.slice(-24);
+    profile.interests = interests.slice(-24);
     saveCompanionMemory();
   }
   return true;
@@ -1314,12 +1375,17 @@ function formatUserName(name) {
 }
 
 function setLastVibe(vibe) {
+  const profile = ensureCompanionProfile();
+  if (!profile) {
+    return false;
+  }
+
   const cleanVibe = vibe.trim();
   if (!cleanVibe) {
     return false;
   }
 
-  dialogueController.memory.profile.lastVibe = cleanVibe;
+  profile.lastVibe = cleanVibe;
   saveCompanionMemory();
   return true;
 }
@@ -1399,6 +1465,7 @@ function applyProfileMetadataUpdate(update) {
 }
 
 async function requestProfileMetadataUpdate(prompt) {
+  const profile = getCompanionProfile();
   const response = await fetch(appUrl("ollama-chat"), {
     method: "POST",
     headers: {
@@ -1418,7 +1485,7 @@ async function requestProfileMetadataUpdate(prompt) {
             "Set interests only for stable likes, hobbies, topics, tools, genres, or preferences the user mentions.",
             "Set lastVibe only for the user's current mood, energy, or vibe.",
             "Do not infer metadata from assistant text or from the existing profile.",
-            `Existing profile: ${JSON.stringify(dialogueController.memory.profile)}`
+            `Existing profile: ${JSON.stringify(profile)}`
           ].join(" ")
         },
         {
@@ -1454,9 +1521,13 @@ async function learnProfileFromPrompt(prompt) {
 }
 
 function formatMemorySection() {
+  if (!isProfileMetadataEnabled()) {
+    return "Saved profile metadata is disabled.";
+  }
+
   const userFacts = dialogueController.memory.user;
   const websiteFacts = dialogueController.memory.website;
-  const { userName, interests, lastVibe } = dialogueController.memory.profile;
+  const { userName, interests, lastVibe } = getCompanionProfile();
   const lines = [];
 
   lines.push("User profile:");
@@ -1535,7 +1606,8 @@ function formatRecentTranscript(limit = RECENT_TRANSCRIPT_LINES) {
 function getMemorySummary() {
   const userCount = dialogueController.memory.user.length;
   const websiteCount = dialogueController.memory.website.length;
-  const interestCount = dialogueController.memory.profile.interests.length;
+  const profile = getCompanionProfile();
+  const interestCount = isProfileMetadataEnabled() ? profile.interests.length : 0;
   const contextCount = dialogueController.messages.filter(
     (message) => message.role === "user" || message.role === "assistant"
   ).length;
@@ -1544,7 +1616,7 @@ function getMemorySummary() {
 }
 
 function clearAllCompanionMemory() {
-  dialogueController.memory = { user: [], website: [], profile: getDefaultUserProfile() };
+  dialogueController.memory = getDefaultCompanionMemory();
   dialogueController.messages = [];
   localStorage.removeItem(COMPANION_MEMORY_STORAGE_KEY);
   localStorage.removeItem(COMPANION_CONTEXT_STORAGE_KEY);
@@ -1552,7 +1624,7 @@ function clearAllCompanionMemory() {
 }
 
 function getStoredMetadataSnapshot() {
-  return {
+  const snapshot = {
     privacy: "Stored locally in this browser. Sent only to the local Ollama endpoint when relevant.",
     storageKeys: {
       memory: COMPANION_MEMORY_STORAGE_KEY,
@@ -1562,15 +1634,27 @@ function getStoredMetadataSnapshot() {
       contextLines: getMaxConsoleMemoryLines(),
       recentTranscriptLinesSentToOllama: getRecentTranscriptLineLimit()
     },
-    profile: { ...dialogueController.memory.profile },
-    userFacts: [...dialogueController.memory.user],
-    websiteFacts: [...dialogueController.memory.website],
     contextLog: takeLastItems(
       dialogueController.messages.filter(
         (message) => message.role === "user" || message.role === "assistant"
       ),
       getMaxConsoleMemoryLines()
     )
+  };
+
+  if (!isProfileMetadataEnabled()) {
+    return {
+      ...snapshot,
+      profileMetadataExtraction: false
+    };
+  }
+
+  return {
+    ...snapshot,
+    profileMetadataExtraction: true,
+    profile: { ...getCompanionProfile() },
+    userFacts: [...dialogueController.memory.user],
+    websiteFacts: [...dialogueController.memory.website]
   };
 }
 
@@ -1688,39 +1772,59 @@ function handleMemoryCommand(prompt) {
   }
 
   if (name === "name") {
+    if (!isProfileMetadataEnabled()) {
+      addDialogueLine("system", "profile metadata disabled");
+      return true;
+    }
+
     if (!setUserName(value)) {
       addDialogueLine("system", "Usage: /name your name");
       return true;
     }
-    addDialogueLine("system", `name saved: ${dialogueController.memory.profile.userName}`);
+    addDialogueLine("system", `name saved: ${getCompanionProfile().userName}`);
     showSpeechPhrase("I'll remember your name.");
     return true;
   }
 
   if (name === "interest" || name === "interests") {
+    if (!isProfileMetadataEnabled()) {
+      addDialogueLine("system", "profile metadata disabled");
+      return true;
+    }
+
     const interests = splitProfileItems(value);
     if (interests.length === 0) {
       addDialogueLine("system", "Usage: /interest modular synths, arcade games");
       return true;
     }
     interests.forEach(rememberInterest);
-    addDialogueLine("system", `interests saved: ${dialogueController.memory.profile.interests.join(", ")}`);
+    addDialogueLine("system", `interests saved: ${getCompanionProfile().interests.join(", ")}`);
     showSpeechPhrase("I added that to your interests.");
     return true;
   }
 
   if (name === "vibe" || name === "mood") {
+    if (!isProfileMetadataEnabled()) {
+      addDialogueLine("system", "profile metadata disabled");
+      return true;
+    }
+
     if (!setLastVibe(value)) {
       addDialogueLine("system", "Usage: /vibe creative");
       return true;
     }
-    addDialogueLine("system", `vibe saved: ${dialogueController.memory.profile.lastVibe}`);
+    addDialogueLine("system", `vibe saved: ${getCompanionProfile().lastVibe}`);
     showSpeechPhrase("I'll keep that vibe in mind.");
     return true;
   }
 
   if (name === "profile") {
-    const { userName, interests, lastVibe } = dialogueController.memory.profile;
+    if (!isProfileMetadataEnabled()) {
+      addDialogueLine("system", "profile metadata disabled");
+      return true;
+    }
+
+    const { userName, interests, lastVibe } = getCompanionProfile();
     addDialogueLine("system", `profile name: ${userName}`);
     addDialogueLine("system", `profile interests: ${interests.join(", ") || "none yet"}`);
     addDialogueLine("system", `profile vibe: ${lastVibe || "none yet"}`);
@@ -1821,20 +1925,24 @@ function shouldSkipContinuationGreeting() {
 }
 
 function hasStoredCompanionMemory() {
-  const profile = dialogueController.memory.profile;
+  const hasProfileMemory = isProfileMetadataEnabled() && (() => {
+    const profile = getCompanionProfile();
+    return isUsableUserName(profile.userName) ||
+      profile.interests.length > 0 ||
+      Boolean(profile.lastVibe);
+  })();
+
   return (
     dialogueController.messages.some((message) => message.role === "user" || message.role === "assistant") ||
     dialogueController.memory.user.length > 0 ||
     dialogueController.memory.website.length > 0 ||
-    isUsableUserName(profile.userName) ||
-    profile.interests.length > 0 ||
-    Boolean(profile.lastVibe)
+    hasProfileMemory
   );
 }
 
 function getContinuationGreeting() {
   const characterName = getCatchyCharacterName();
-  const profileName = dialogueController.memory.profile.userName;
+  const profileName = isProfileMetadataEnabled() ? getCompanionProfile().userName : "";
   const userName = isUsableUserName(profileName) ? profileName : "";
 
   if (hasStoredCompanionMemory()) {
@@ -1847,9 +1955,13 @@ function getContinuationGreeting() {
 }
 
 function getContinuationGreetingPrompt() {
+  const contextInstruction = isProfileMetadataEnabled()
+    ? "Use the full recent chat context and saved memory to make it feel like she remembers where the conversation left off."
+    : "Use the recent chat context to make it feel like she remembers where the conversation left off.";
+
   return [
     "Write Astera's short startup continuation greeting for this session.",
-    "Use the full recent chat context and saved memory to make it feel like she remembers where the conversation left off.",
+    contextInstruction,
     "Do not summarize the transcript, mention files, mention the scheduler, or explain that you are using memory.",
     "One natural sentence is best; two short sentences is the maximum."
   ].join(" ");
@@ -1894,7 +2006,8 @@ async function runSchedulerCommand(command) {
 }
 
 function shouldIncludeSavedMemory(prompt) {
-  return /\b(?:remember|memory|know about me|about me|my favorite|my name|name|interest|interests|i like|i prefer|vibe|mood|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
+  return isProfileMetadataEnabled() &&
+    /\b(?:remember|memory|know about me|about me|my favorite|my name|name|interest|interests|i like|i prefer|vibe|mood|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
 }
 
 function getCurrentTurnGuidance(prompt) {
@@ -1905,31 +2018,48 @@ function getCurrentTurnGuidance(prompt) {
   return "Answer the latest user message directly. Mention appearance or model details only if the user asks about identity, looks, pose, motion, or the current scene.";
 }
 
+function getCompanionSystemPrompt() {
+  if (isProfileMetadataEnabled()) {
+    return COMPANION_SYSTEM_PROMPT;
+  }
+
+  return COMPANION_SYSTEM_PROMPT.replace(
+    "Saved memory contains facts about the user and website; never treat user facts as your own experiences. ",
+    ""
+  );
+}
+
 function getOllamaMessages(currentPrompt = "", options = {}) {
   const transcriptLines = getRecentTranscriptLineLimit(options.transcriptLines || RECENT_TRANSCRIPT_LINES);
   const conversation = dialogueController.messages
     .filter((message) => message.role === "user" || message.role === "assistant");
   const recentConversation = takeLastItems(conversation, transcriptLines);
-  const savedMemory = (options.includeSavedMemory ?? shouldIncludeSavedMemory(currentPrompt))
-    ? formatMemorySection()
-    : "Available but omitted for this turn because the latest user message does not ask about saved facts.";
   const memoryContext = [
-    COMPANION_SYSTEM_PROMPT,
+    getCompanionSystemPrompt(),
     "",
     "Current turn guidance:",
-    options.currentTurnGuidance || getCurrentTurnGuidance(currentPrompt),
-    "",
-    "Saved memory:",
-    savedMemory,
+    options.currentTurnGuidance || getCurrentTurnGuidance(currentPrompt)
+  ];
+
+  if (isProfileMetadataEnabled() && (options.includeSavedMemory ?? shouldIncludeSavedMemory(currentPrompt))) {
+    memoryContext.push(
+      "",
+      "Saved memory:",
+      formatMemorySection()
+    );
+  }
+
+  memoryContext.push(
     "",
     "Current appearance snapshot:",
     getCurrentAppearanceSnapshot(),
     "",
     "Recent transcript:",
     formatRecentTranscript(transcriptLines)
-  ].join("\n");
+  );
+
   return [
-    { role: "system", content: memoryContext },
+    { role: "system", content: memoryContext.join("\n") },
     ...recentConversation
   ];
 }
