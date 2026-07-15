@@ -291,6 +291,11 @@ const speechController = {
   chunks: [],
   chunkIndex: 0
 };
+const demoScheduler = {
+  timers: [],
+  events: [],
+  startedAt: 0
+};
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
@@ -912,6 +917,99 @@ function setSpeechPhrase(phrase) {
     : TEST_SPEECH_PHRASES[0];
   showSpeechPhrase(selectedPhrase);
   speechPhraseSelect.value = selectedPhrase;
+}
+
+function hasScheduledSpeech(config = {}) {
+  const scheduler = getSchedulerConfig(config);
+  return (
+    scheduler.enabled &&
+    scheduler.events.some((event, index) => normalizeSchedulerEvent(event, index)?.type === "speech")
+  );
+}
+
+function showInitialSpeechPhrase(config = {}) {
+  if (!hasScheduledSpeech(config)) {
+    setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
+  }
+}
+
+function getSchedulerConfig(config = {}) {
+  const scheduler = config.scheduler || {};
+  const legacyEvents = Array.isArray(config.schedule) ? config.schedule : [];
+  const schedulerEvents = Array.isArray(scheduler.events) ? scheduler.events : [];
+  return {
+    enabled: scheduler.enabled !== false,
+    events: schedulerEvents.length > 0 ? schedulerEvents : legacyEvents
+  };
+}
+
+function parseSchedulerSeconds(value, fallback = 0) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : fallback;
+}
+
+function normalizeSchedulerEvent(event, index) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const type = String(event.type || event.kind || "").trim().toLowerCase();
+  const at = parseSchedulerSeconds(
+    event.at ?? event.delay ?? event.delaySeconds ?? event.after,
+    index
+  );
+
+  if (type === "motion") {
+    const motion = String(event.motion || event.id || event.value || "").trim();
+    return motion ? { at, type, motion } : null;
+  }
+
+  if (type === "text" || type === "speech") {
+    const text = String(event.text || event.phrase || event.value || "").trim();
+    return text ? { at, type: "speech", text } : null;
+  }
+
+  return null;
+}
+
+function stopDemoScheduler() {
+  demoScheduler.timers.forEach((timer) => {
+    window.clearTimeout(timer);
+  });
+  demoScheduler.timers = [];
+}
+
+function runSchedulerEvent(event) {
+  if (event.type === "motion") {
+    setMotionMode(event.motion, false);
+    return;
+  }
+
+  if (event.type === "speech") {
+    showSpeechPhrase(event.text);
+  }
+}
+
+function startDemoScheduler(config = {}) {
+  stopDemoScheduler();
+  const scheduler = getSchedulerConfig(config);
+  if (!scheduler.enabled || scheduler.events.length === 0) {
+    demoScheduler.events = [];
+    return;
+  }
+
+  demoScheduler.startedAt = performance.now();
+  demoScheduler.events = scheduler.events
+    .map(normalizeSchedulerEvent)
+    .filter(Boolean)
+    .sort((a, b) => a.at - b.at);
+
+  demoScheduler.timers = demoScheduler.events.map((event) =>
+    window.setTimeout(() => {
+      runSchedulerEvent(event);
+    }, event.at * 1000)
+  );
+  window.demoScheduler = demoScheduler;
 }
 
 function getDefaultUserProfile() {
@@ -4502,7 +4600,6 @@ previewOptionButtons.forEach((button) => {
 applySavedDemoProfileToUrlState();
 pruneDeprecatedPreviewUrlParams();
 populateSpeechPhraseSelect();
-setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
 addDialogueLine("system", isDemoMode() ? "demo mode ready" : `${OLLAMA_MODEL} ready`);
 updatePreviewControls();
 
@@ -4571,6 +4668,7 @@ loadAssetConfig()
     configureMotionOptions(state);
     populateModelPresetSelect(state);
     renderAssetStatus(state, assetStatus);
+    showInitialSpeechPhrase(state.config);
     return loadConfiguredModel(state);
   })
   .then((mesh) => {
@@ -4579,8 +4677,10 @@ loadAssetConfig()
     }
     window.localModel = mesh;
     updateModelAssetStatus();
+    startDemoScheduler(localAssetState?.config);
   })
   .catch((error) => {
+    setSpeechPhrase(TEST_SPEECH_PHRASES[0]);
     assetStatus.dataset.state = "warning";
     assetStatus.innerHTML = `
       <span>Local assets</span>
