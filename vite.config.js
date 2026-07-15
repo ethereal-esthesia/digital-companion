@@ -473,6 +473,12 @@ function localModelPresetPlugin() {
 
 export default defineConfig({
   base: process.env.SOULECHO_BASE_PATH || "/",
+  preview: {
+    allowedHosts: [
+      "ethereal-esthesia.com",
+      "www.ethereal-esthesia.com"
+    ]
+  },
   build: {
     rollupOptions: {
       input: {
