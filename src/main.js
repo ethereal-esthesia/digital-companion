@@ -92,6 +92,7 @@ const DEFAULT_APP_SETTINGS = {
   profileMetadataExtraction: import.meta.env.VITE_PROFILE_METADATA_EXTRACTION !== "0",
   maxConsoleMemoryLines: Number(import.meta.env.VITE_MAX_CONSOLE_MEMORY_LINES || 40)
 };
+const OLLAMA_THINKING_MESSAGE = `${OLLAMA_MODEL} thinking`;
 const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
@@ -1776,6 +1777,17 @@ function addDialogueLine(role, content) {
   renderDialogueHistory();
 }
 
+function addOllamaThinkingNotice() {
+  addDialogueLine("system", OLLAMA_THINKING_MESSAGE);
+}
+
+function removeOllamaThinkingNotice() {
+  dialogueController.messages = dialogueController.messages.filter(
+    (message) => message.role !== "system" || message.content !== OLLAMA_THINKING_MESSAGE
+  );
+  renderDialogueHistory();
+}
+
 function getLastDialogueLine(role) {
   for (let index = dialogueController.messages.length - 1; index >= 0; index -= 1) {
     const message = dialogueController.messages[index];
@@ -1866,10 +1878,13 @@ async function runSchedulerCommand(command) {
     }
 
     try {
+      addOllamaThinkingNotice();
       addAssistantDialogueReply(await requestContinuationGreeting());
     } catch (error) {
       console.warn("Continuation greeting failed", error);
       addAssistantDialogueReply(getContinuationGreeting());
+    } finally {
+      removeOllamaThinkingNotice();
     }
     return true;
   }
@@ -1993,23 +2008,19 @@ async function submitDialoguePrompt(prompt) {
   dialogueInput.disabled = true;
   dialogueSendButton.disabled = true;
   addDialogueLine("user", trimmedPrompt);
-  addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
+  addOllamaThinkingNotice();
   await learnProfileFromPrompt(trimmedPrompt);
 
   try {
     const reply = cleanCompanionReply(await requestOllamaReply(trimmedPrompt));
-    dialogueController.messages = dialogueController.messages.filter(
-      (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
-    );
+    removeOllamaThinkingNotice();
     if (!reply) {
       addDialogueLine("system", `${OLLAMA_MODEL} returned an empty reply. Try again.`);
       return;
     }
     addAssistantDialogueReply(reply);
   } catch (error) {
-    dialogueController.messages = dialogueController.messages.filter(
-      (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`
-    );
+    removeOllamaThinkingNotice();
     addDialogueLine(
       "system",
       error instanceof Error ? error.message : "Ollama is unavailable"
