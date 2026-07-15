@@ -92,7 +92,6 @@ const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
 const COMPANION_MEMORY_STORAGE_KEY = "digitalCompanion.vitaMemory";
 const COMPANION_CONTEXT_STORAGE_KEY = "digitalCompanion.contextLog";
-const COMPANION_SCHEDULER_STORAGE_KEY = "digitalCompanion.schedulerState";
 const DEMO_PROFILE_STORAGE_KEY = "digitalCompanion.demoProfile";
 const RECENT_TRANSCRIPT_LINES = 20;
 const PERSISTED_CONTEXT_LINES = 40;
@@ -1108,9 +1107,15 @@ function getDefaultUserProfile() {
   };
 }
 
+function isUsableUserName(name) {
+  const cleanName = typeof name === "string" ? name.trim() : "";
+  return Boolean(cleanName) &&
+    !["guest", "null", "undefined", "anonymous"].includes(cleanName.toLowerCase());
+}
+
 function normalizeUserProfile(profile = {}) {
   const fallback = getDefaultUserProfile();
-  const userName = typeof profile.userName === "string" && profile.userName.trim()
+  const userName = isUsableUserName(profile.userName)
     ? profile.userName.trim()
     : fallback.userName;
   const interests = Array.isArray(profile.interests)
@@ -1181,30 +1186,6 @@ function saveCompanionContext() {
   localStorage.setItem(COMPANION_CONTEXT_STORAGE_KEY, JSON.stringify(persistedMessages));
 }
 
-function loadCompanionSchedulerState() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(COMPANION_SCHEDULER_STORAGE_KEY) || "{}");
-    return stored && typeof stored === "object" ? stored : {};
-  } catch {
-    return {};
-  }
-}
-
-function hasSchedulerCommandRun(command) {
-  return Boolean(loadCompanionSchedulerState().commands?.[command]);
-}
-
-function rememberSchedulerCommandRun(command) {
-  const schedulerState = loadCompanionSchedulerState();
-  schedulerState.commands = {
-    ...(schedulerState.commands || {}),
-    [command]: {
-      ranAt: new Date().toISOString()
-    }
-  };
-  localStorage.setItem(COMPANION_SCHEDULER_STORAGE_KEY, JSON.stringify(schedulerState));
-}
-
 function rememberCompanionFact(kind, fact) {
   const cleanFact = fact.trim();
   if (!cleanFact) {
@@ -1221,7 +1202,7 @@ function rememberCompanionFact(kind, fact) {
 
 function setUserName(name) {
   const cleanName = formatUserName(name);
-  if (!cleanName) {
+  if (!isUsableUserName(cleanName)) {
     return false;
   }
 
@@ -1468,7 +1449,6 @@ function clearAllCompanionMemory() {
   dialogueController.messages = [];
   localStorage.removeItem(COMPANION_MEMORY_STORAGE_KEY);
   localStorage.removeItem(COMPANION_CONTEXT_STORAGE_KEY);
-  localStorage.removeItem(COMPANION_SCHEDULER_STORAGE_KEY);
   renderDialogueHistory();
 }
 
@@ -1705,12 +1685,6 @@ function getLastDialogueLine(role) {
   return null;
 }
 
-function hasDialogueLine(role, content) {
-  return dialogueController.messages.some(
-    (message) => message.role === role && message.content === content
-  );
-}
-
 function addAssistantDialogueReply(reply, options = {}) {
   const cleanReply = reply.trim();
   if (!cleanReply) {
@@ -1723,6 +1697,14 @@ function addAssistantDialogueReply(reply, options = {}) {
   addDialogueLine("assistant", cleanReply);
   showSpeechPhrase(cleanReply);
   return true;
+}
+
+function shouldSkipContinuationGreeting() {
+  const recentDialogue = dialogueController.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .slice(-2);
+  return recentDialogue.length === 2 &&
+    recentDialogue.every((message) => message.role === "assistant");
 }
 
 function hasStoredCompanionMemory() {
@@ -1754,18 +1736,11 @@ function getContinuationGreeting() {
 function runSchedulerCommand(command) {
   const normalizedCommand = command.trim().toLowerCase();
   if (normalizedCommand === "continue-greeting" || normalizedCommand === "continuation-greeting") {
-    if (hasSchedulerCommandRun("continue-greeting")) {
+    if (shouldSkipContinuationGreeting()) {
       return true;
     }
 
-    const greeting = getContinuationGreeting();
-    if (hasDialogueLine("assistant", greeting)) {
-      rememberSchedulerCommandRun("continue-greeting");
-      return true;
-    }
-
-    addAssistantDialogueReply(greeting, { dedupeRecent: true });
-    rememberSchedulerCommandRun("continue-greeting");
+    addAssistantDialogueReply(getContinuationGreeting());
     return true;
   }
 
