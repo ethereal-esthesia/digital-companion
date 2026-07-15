@@ -27,19 +27,9 @@
     "enabled": true,
     "events": [
       {
-        "at": 0.4,
-        "type": "motion",
-        "motion": "greeting-wave"
-      },
-      {
         "at": 2.8,
         "type": "text",
         "text": "Hi, I'm Astera. Thanks for giving me a second to wake up."
-      },
-      {
-        "at": 5.6,
-        "type": "motion",
-        "motion": "idle-breathe"
       }
     ]
   }

@@ -144,7 +144,6 @@ const STILL_MOTION_OPTION = {
 const PROCEDURAL_BASE_MOTION_ID = "vroid-show-full-body";
 const BREATHE_LOOP_SECONDS = 4.2;
 const IDLE_BREATHE_MOTION_ID = "idle-breathe";
-const GREETING_WAVE_MOTION_ID = "greeting-wave";
 const IDLE_INTERLUDE_MIN_SECONDS = 18;
 const IDLE_INTERLUDE_MAX_SECONDS = 38;
 const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
@@ -159,12 +158,6 @@ const PROCEDURAL_MOTION_OPTIONS = [
   {
     id: IDLE_BREATHE_MOTION_ID,
     label: "Idle breathe",
-    kind: "procedural",
-    ok: true
-  },
-  {
-    id: GREETING_WAVE_MOTION_ID,
-    label: "Greeting wave",
     kind: "procedural",
     ok: true
   }
@@ -2418,6 +2411,48 @@ function addPoseRotationDelta(pose, boneName, x = 0, y = 0, z = 0) {
   transform.rotation = rotation.toArray();
 }
 
+function addRelaxedFingerCurl(pose, side) {
+  const fingers = ["Index", "Middle", "Ring", "Little"];
+  const sideDirection = side === "left" ? 1 : -1;
+
+  addPoseRotationDelta(
+    pose,
+    `${side}ThumbMetacarpal`,
+    THREE.MathUtils.degToRad(4),
+    THREE.MathUtils.degToRad(6 * sideDirection),
+    THREE.MathUtils.degToRad(-6 * sideDirection)
+  );
+  addPoseRotationDelta(pose, `${side}ThumbProximal`, THREE.MathUtils.degToRad(8), 0, 0);
+  addPoseRotationDelta(pose, `${side}ThumbDistal`, THREE.MathUtils.degToRad(5), 0, 0);
+
+  fingers.forEach((finger, index) => {
+    const curl = finger === "Middle" || finger === "Ring" ? 1 : 0.82;
+    const spread = (index - 1.5) * 1.4 * sideDirection;
+
+    addPoseRotationDelta(
+      pose,
+      `${side}${finger}Proximal`,
+      THREE.MathUtils.degToRad(10 * curl),
+      THREE.MathUtils.degToRad(spread),
+      0
+    );
+    addPoseRotationDelta(
+      pose,
+      `${side}${finger}Intermediate`,
+      THREE.MathUtils.degToRad(14 * curl),
+      0,
+      0
+    );
+    addPoseRotationDelta(
+      pose,
+      `${side}${finger}Distal`,
+      THREE.MathUtils.degToRad(7 * curl),
+      0,
+      0
+    );
+  });
+}
+
 function getLoopSine(t, duration) {
   const phase = ((t % duration) + duration) % duration;
   return Math.sin((phase / duration) * Math.PI * 2);
@@ -2438,6 +2473,7 @@ function buildBreathePose(basePose, t) {
   const torsoLift = breath;
   const clavicleRoll = breath;
   const armDrift = 0.18 * breath;
+  const armSettle = 1 - Math.abs(breath) * 0.08;
 
   addPosePositionDelta(pose, "hips", 0, -0.002 * torsoLift, 0);
   addPosePositionDelta(pose, "upperChest", 0, 0.006 * torsoLift, 0.002 * breath);
@@ -2468,98 +2504,35 @@ function buildBreathePose(basePose, t) {
   addPoseRotationDelta(
     pose,
     "leftUpperArm",
-    0,
-    THREE.MathUtils.degToRad(-0.5 * armDrift),
-    THREE.MathUtils.degToRad(0.35 * armDrift)
+    THREE.MathUtils.degToRad(-2.5 + 0.4 * breath),
+    THREE.MathUtils.degToRad(-2 - 0.5 * armDrift),
+    THREE.MathUtils.degToRad(64 * armSettle - 0.35 * armDrift)
   );
   addPoseRotationDelta(
     pose,
     "rightUpperArm",
-    0,
-    THREE.MathUtils.degToRad(0.5 * armDrift),
-    THREE.MathUtils.degToRad(-0.35 * armDrift)
-  );
-
-  return pose;
-}
-
-function buildGreetingWavePose(basePose, t) {
-  const pose = buildBreathePose(basePose, t);
-  const wave = getLoopSine(t, 1.2);
-  const sway = getLoopSine(t, BREATHE_LOOP_SECONDS);
-
-  addPoseRotationDelta(pose, "spine", 0, THREE.MathUtils.degToRad(-2.5), 0);
-  addPoseRotationDelta(
-    pose,
-    "chest",
-    THREE.MathUtils.degToRad(-1.5),
-    THREE.MathUtils.degToRad(-4),
-    0
-  );
-  addPoseRotationDelta(
-    pose,
-    "upperChest",
-    THREE.MathUtils.degToRad(-2),
-    THREE.MathUtils.degToRad(-6),
-    0
-  );
-  addPoseRotationDelta(
-    pose,
-    "neck",
-    THREE.MathUtils.degToRad(1.2),
-    THREE.MathUtils.degToRad(4),
-    0
-  );
-  addPoseRotationDelta(
-    pose,
-    "head",
-    THREE.MathUtils.degToRad(2),
-    THREE.MathUtils.degToRad(5),
-    THREE.MathUtils.degToRad(1.4 * sway)
-  );
-
-  addPoseRotationDelta(
-    pose,
-    "leftUpperArm",
-    0,
-    THREE.MathUtils.degToRad(-4),
-    THREE.MathUtils.degToRad(6)
+    THREE.MathUtils.degToRad(-2.5 + 0.4 * breath),
+    THREE.MathUtils.degToRad(2 + 0.5 * armDrift),
+    THREE.MathUtils.degToRad(-64 * armSettle + 0.35 * armDrift)
   );
   addPoseRotationDelta(
     pose,
     "leftLowerArm",
-    THREE.MathUtils.degToRad(4),
+    THREE.MathUtils.degToRad(3 + 0.4 * breath),
     0,
     THREE.MathUtils.degToRad(8)
   );
   addPoseRotationDelta(
     pose,
-    "rightShoulder",
+    "rightLowerArm",
+    THREE.MathUtils.degToRad(3 + 0.4 * breath),
     0,
-    THREE.MathUtils.degToRad(-6),
     THREE.MathUtils.degToRad(-8)
   );
-  addPoseRotationDelta(
-    pose,
-    "rightUpperArm",
-    THREE.MathUtils.degToRad(-10),
-    THREE.MathUtils.degToRad(18),
-    THREE.MathUtils.degToRad(-72)
-  );
-  addPoseRotationDelta(
-    pose,
-    "rightLowerArm",
-    THREE.MathUtils.degToRad(-18),
-    THREE.MathUtils.degToRad(10),
-    THREE.MathUtils.degToRad(-58)
-  );
-  addPoseRotationDelta(
-    pose,
-    "rightHand",
-    0,
-    THREE.MathUtils.degToRad(10 + 18 * wave),
-    THREE.MathUtils.degToRad(-8 * wave)
-  );
+  addPoseRotationDelta(pose, "leftHand", THREE.MathUtils.degToRad(2), 0, THREE.MathUtils.degToRad(4));
+  addPoseRotationDelta(pose, "rightHand", THREE.MathUtils.degToRad(2), 0, THREE.MathUtils.degToRad(-4));
+  addRelaxedFingerCurl(pose, "left");
+  addRelaxedFingerCurl(pose, "right");
 
   return pose;
 }
@@ -2567,10 +2540,6 @@ function buildGreetingWavePose(basePose, t) {
 function buildProceduralPose(mode, t, basePose = {}) {
   if (mode === IDLE_BREATHE_MOTION_ID) {
     return buildBreathePose(basePose, t);
-  }
-
-  if (mode === GREETING_WAVE_MOTION_ID) {
-    return buildGreetingWavePose(basePose, t);
   }
 
   return cloneNormalizedPose(basePose);
