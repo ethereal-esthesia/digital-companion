@@ -86,7 +86,7 @@ const TEST_SPEECH_PHRASES = [
   "First I can show two sentences. Then I wait for the reader. After that, I continue with the next thought.",
   "Someday I will answer with Ollama, but today I am just practicing my stage banter."
 ];
-const OLLAMA_MODEL = "llama3.2:3b";
+const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3.2:3b";
 const APP_BASE_URL = import.meta.env.BASE_URL || "/";
 const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =

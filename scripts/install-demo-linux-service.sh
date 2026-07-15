@@ -81,6 +81,7 @@ prepare_project() {
   sudo -H -u "$APP_USER" npm --prefix "$APP_DIR" ci --include=optional
   sudo -H -u "$APP_USER" env \
     SOULECHO_BASE_PATH="$SOULECHO_BASE_PATH" \
+    VITE_OLLAMA_MODEL="$OLLAMA_MODEL" \
     npm --prefix "$APP_DIR" run demo:build -- "$DEMO_CONFIGURATION"
 }
 
