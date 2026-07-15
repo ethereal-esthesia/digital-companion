@@ -48,6 +48,8 @@ body,
   inset: 0;
   z-index: 20;
   background: #ffffff;
+  display: grid;
+  place-items: center;
   opacity: 1;
   pointer-events: none;
   transition:
@@ -56,9 +58,52 @@ body,
   visibility: visible;
 }
 
+.load-spinner {
+  --spinner-size: clamp(56px, 9vmin, 82px);
+  --dot-size: clamp(8px, 1.45vmin, 12px);
+  position: relative;
+  width: var(--spinner-size);
+  height: var(--spinner-size);
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.load-spinner span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 999px;
+  background: #b8e7ff;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 78%),
+    0 0 14px rgb(99 202 255 / 24%);
+  opacity: 0.24;
+  transform:
+    translate(-50%, -50%)
+    rotate(calc(var(--dot-index) * 45deg))
+    translateY(calc(var(--spinner-size) * -0.42));
+  animation: load-dot-cycle 1280ms ease-in-out infinite;
+  animation-delay: calc(var(--dot-index) * 120ms);
+}
+
+.load-spinner span:nth-child(1) { --dot-index: 0; }
+.load-spinner span:nth-child(2) { --dot-index: 1; }
+.load-spinner span:nth-child(3) { --dot-index: 2; }
+.load-spinner span:nth-child(4) { --dot-index: 3; }
+.load-spinner span:nth-child(5) { --dot-index: 4; }
+.load-spinner span:nth-child(6) { --dot-index: 5; }
+.load-spinner span:nth-child(7) { --dot-index: 6; }
+.load-spinner span:nth-child(8) { --dot-index: 7; }
+
 .load-veil[data-state="ready"] {
   opacity: 0;
   visibility: hidden;
+}
+
+.load-veil[data-state="ready"] .load-spinner {
+  opacity: 0;
 }
 
 .speech-bubble {
@@ -523,6 +568,27 @@ html[data-app-mode="demo"] .dialogue-form input::placeholder {
   100% {
     opacity: 0;
     transform: translate3d(var(--flow-x), calc(var(--flow-y) * -1), 0) scale(0.74);
+  }
+}
+
+@keyframes load-dot-cycle {
+  0%,
+  72% {
+    background: #d7f3ff;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 92%),
+      0 0 18px rgb(104 210 255 / 58%),
+      0 0 34px rgb(104 210 255 / 24%);
+    opacity: 1;
+  }
+
+  88%,
+  100% {
+    background: #b8e7ff;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 78%),
+      0 0 14px rgb(99 202 255 / 24%);
+    opacity: 0.24;
   }
 }
 
