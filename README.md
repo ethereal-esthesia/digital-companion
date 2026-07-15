@@ -1,8 +1,8 @@
-# Digital Companion
+# SoulEcho
 
 > An open-source desktop companion platform for VRM and MMD (PMX) characters.
 
-**Digital Companion** aims to bring interactive 3D characters to the desktop, local applications, and eventually online experiences.
+**SoulEcho** aims to bring interactive 3D characters to the desktop, local applications, and eventually online experiences.
 
 The long-term goal is to support expressive companions that can:
 - Load **VRM** and **PMX** characters.
@@ -34,7 +34,7 @@ Current features include:
 - Auto-discovered local model folders
 - Basic local Ollama dialogue
 
-No networking or AI interaction is implemented yet.
+External networking is intentionally limited in the prototype. Local AI dialogue is available through the dev server bridge when Ollama is running.
 
 ---
 
@@ -186,4 +186,4 @@ The console supports lightweight local memory:
 
 ## License
 
-See the LICENSE file.
+SoulEcho is licensed under the GNU General Public License v3.0. See the LICENSE file for the full license text.

@@ -1,7 +1,8 @@
 {
-  "name": "mmd-getcha-recreation",
+  "name": "soulecho",
   "version": "1.0.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

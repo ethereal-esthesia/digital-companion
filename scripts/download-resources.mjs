@@ -6,7 +6,7 @@ import process from "node:process";
 const root = process.cwd();
 const manifestPath = path.join(root, "resources/original-video-assets/manifest.json");
 const localRoot = path.join(root, "local-resources/original-video-assets");
-const userAgent = "MMDTest-resource-downloader/1.0";
+const userAgent = "soulecho-resource-downloader/1.0";
 const openManual = process.argv.includes("--open-manual");
 
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -584,7 +584,7 @@ async function writeManualChecklist() {
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>MMDTest Manual Downloads</title>
+    <title>SoulEcho Manual Downloads</title>
     <style>
       body { font-family: system-ui, sans-serif; margin: 32px; line-height: 1.45; }
       table { border-collapse: collapse; width: 100%; }
@@ -594,7 +594,7 @@ async function writeManualChecklist() {
     </style>
   </head>
   <body>
-    <h1>MMDTest Manual Downloads</h1>
+    <h1>SoulEcho Manual Downloads</h1>
     <h2>Read first</h2>
     <p><a href="${escapeHtml(readFirstFileName)}">${escapeHtml(readFirstFileName)}</a></p>
     <p>Start with this text file before opening source downloads. It contains source descriptions, password clues, and discovered local license/readme file paths.</p>
