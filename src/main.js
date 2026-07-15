@@ -144,6 +144,8 @@ const STILL_MOTION_OPTION = {
 const PROCEDURAL_BASE_MOTION_ID = "vroid-show-full-body";
 const BREATHE_LOOP_SECONDS = 4.2;
 const IDLE_BREATHE_MOTION_ID = "idle-breathe";
+const CASUAL_LOOK_AROUND_MOTION_ID = "casual-look-around";
+const CASUAL_LOOK_AROUND_LOOP_SECONDS = BREATHE_LOOP_SECONDS * 4;
 const IDLE_INTERLUDE_MIN_SECONDS = 18;
 const IDLE_INTERLUDE_MAX_SECONDS = 38;
 const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
@@ -158,6 +160,12 @@ const PROCEDURAL_MOTION_OPTIONS = [
   {
     id: IDLE_BREATHE_MOTION_ID,
     label: "Idle breathe",
+    kind: "procedural",
+    ok: true
+  },
+  {
+    id: CASUAL_LOOK_AROUND_MOTION_ID,
+    label: "Casual look around",
     kind: "procedural",
     ok: true
   }
@@ -2535,6 +2543,47 @@ function getLoopSine(t, duration) {
   return Math.sin((phase / duration) * Math.PI * 2);
 }
 
+function getLoopPhase(t, duration) {
+  return (((t % duration) + duration) % duration) / duration;
+}
+
+function easeInOutUnit(value) {
+  const t = THREE.MathUtils.clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function sampleLoopKeyframes(t, duration, keyframes) {
+  const phase = getLoopPhase(t, duration);
+  for (let index = 0; index < keyframes.length - 1; index += 1) {
+    const current = keyframes[index];
+    const next = keyframes[index + 1];
+    if (phase >= current.at && phase <= next.at) {
+      const span = next.at - current.at || 1;
+      return THREE.MathUtils.lerp(
+        current.value,
+        next.value,
+        easeInOutUnit((phase - current.at) / span)
+      );
+    }
+  }
+
+  return keyframes[keyframes.length - 1]?.value || 0;
+}
+
+function getCasualLookAroundGaze(t) {
+  return sampleLoopKeyframes(t, CASUAL_LOOK_AROUND_LOOP_SECONDS, [
+    { at: 0, value: 0 },
+    { at: 0.12, value: 0 },
+    { at: 0.24, value: -1 },
+    { at: 0.36, value: -1 },
+    { at: 0.5, value: 0 },
+    { at: 0.62, value: 1 },
+    { at: 0.76, value: 1 },
+    { at: 0.9, value: 0 },
+    { at: 1, value: 0 }
+  ]);
+}
+
 function advanceLoopTime(t, delta, duration) {
   if (delta <= 0) {
     return t;
@@ -2614,12 +2663,46 @@ function buildBreathePose(basePose, t) {
   return pose;
 }
 
+function buildCasualLookAroundPose(basePose, t) {
+  const pose = buildBreathePose(basePose, t);
+  const gaze = getCasualLookAroundGaze(t);
+  const glanceStrength = Math.abs(gaze);
+
+  addPoseRotationDelta(pose, "upperChest", 0, THREE.MathUtils.degToRad(2.2 * gaze), 0);
+  addPoseRotationDelta(
+    pose,
+    "neck",
+    THREE.MathUtils.degToRad(-0.45 * glanceStrength),
+    THREE.MathUtils.degToRad(7 * gaze),
+    THREE.MathUtils.degToRad(-1.1 * gaze)
+  );
+  addPoseRotationDelta(
+    pose,
+    "head",
+    THREE.MathUtils.degToRad(-0.65 * glanceStrength),
+    THREE.MathUtils.degToRad(14 * gaze),
+    THREE.MathUtils.degToRad(-1.8 * gaze)
+  );
+
+  return pose;
+}
+
 function buildProceduralPose(mode, t, basePose = {}) {
   if (mode === IDLE_BREATHE_MOTION_ID) {
     return buildBreathePose(basePose, t);
   }
 
+  if (mode === CASUAL_LOOK_AROUND_MOTION_ID) {
+    return buildCasualLookAroundPose(basePose, t);
+  }
+
   return cloneNormalizedPose(basePose);
+}
+
+function getProceduralMotionLoopSeconds(mode) {
+  return mode === CASUAL_LOOK_AROUND_MOTION_ID
+    ? CASUAL_LOOK_AROUND_LOOP_SECONDS
+    : BREATHE_LOOP_SECONDS;
 }
 
 function clearPoseTransition() {
@@ -2908,7 +2991,7 @@ function applyProceduralVrmMotion(delta) {
   motionController.proceduralTime = advanceLoopTime(
     motionController.proceduralTime,
     delta,
-    BREATHE_LOOP_SECONDS
+    getProceduralMotionLoopSeconds(modelPreviewOptions.motion)
   );
   applyCurrentProceduralPose();
   motionController.status = "playing";
