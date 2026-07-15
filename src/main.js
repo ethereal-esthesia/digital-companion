@@ -1272,20 +1272,37 @@ function parseProfileMetadataJson(reply) {
 
   try {
     const parsed = JSON.parse(cleanedReply.slice(start, end + 1));
+    const userName = normalizeOptionalMetadataValue(parsed.userName);
+    const lastVibe = normalizeOptionalMetadataValue(parsed.lastVibe);
     return {
-      userName: typeof parsed.userName === "string" && parsed.userName.trim()
-        ? parsed.userName.trim()
-        : null,
+      userName: isUsableUserName(userName) ? userName : null,
       interests: Array.isArray(parsed.interests)
-        ? parsed.interests.filter((interest) => typeof interest === "string")
+        ? parsed.interests
+            .map(normalizeOptionalMetadataValue)
+            .filter(Boolean)
         : [],
-      lastVibe: typeof parsed.lastVibe === "string" && parsed.lastVibe.trim()
-        ? parsed.lastVibe.trim()
-        : null
+      lastVibe
     };
   } catch {
     return null;
   }
+}
+
+function normalizeOptionalMetadataValue(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleanValue = value.trim();
+  if (!cleanValue) {
+    return null;
+  }
+
+  if (["null", "undefined", "none", "n/a", "na", "unknown"].includes(cleanValue.toLowerCase())) {
+    return null;
+  }
+
+  return cleanValue;
 }
 
 function applyProfileMetadataUpdate(update) {
@@ -1320,7 +1337,8 @@ async function requestProfileMetadataUpdate(prompt) {
           content: [
             "Extract durable user metadata from the latest user message.",
             "Return only JSON with keys: userName, interests, lastVibe.",
-            "Use null for userName or lastVibe when absent, and [] for interests when absent.",
+            "Use literal JSON null for userName or lastVibe when absent, and [] for interests when absent.",
+            "Never use placeholder strings like \"null\", \"none\", \"unknown\", \"N/A\", or \"Guest\".",
             "Set userName when the user introduces or corrects their name, including casual greetings like 'hi, I am Shane'.",
             "Set interests only for stable likes, hobbies, topics, tools, genres, or preferences the user mentions.",
             "Set lastVibe only for the user's current mood, energy, or vibe.",
@@ -1713,7 +1731,7 @@ function hasStoredCompanionMemory() {
     dialogueController.messages.some((message) => message.role === "user" || message.role === "assistant") ||
     dialogueController.memory.user.length > 0 ||
     dialogueController.memory.website.length > 0 ||
-    profile.userName !== DEFAULT_USER_PROFILE.userName ||
+    isUsableUserName(profile.userName) ||
     profile.interests.length > 0 ||
     Boolean(profile.lastVibe)
   );
@@ -1722,7 +1740,7 @@ function hasStoredCompanionMemory() {
 function getContinuationGreeting() {
   const characterName = getCatchyCharacterName();
   const profileName = dialogueController.memory.profile.userName;
-  const userName = profileName !== DEFAULT_USER_PROFILE.userName ? profileName : "";
+  const userName = isUsableUserName(profileName) ? profileName : "";
 
   if (hasStoredCompanionMemory()) {
     return userName
