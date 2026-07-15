@@ -42,6 +42,8 @@ const CONTENT_TYPES = new Map([
   [".webp", "image/webp"]
 ]);
 
+const INLINE_ASSET_EXTENSIONS = new Set([".glb", ".gltf", ".vrm", ".vrma"]);
+
 function slugify(value) {
   return value
     .trim()
@@ -68,6 +70,18 @@ function isExactRequestPath(request, pathname) {
 
 function getContentType(filePath) {
   return CONTENT_TYPES.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
+}
+
+function setInlineAssetHeaders(request, response, next) {
+  const pathname = getRequestPathname(request);
+  const extension = path.extname(pathname).toLowerCase();
+
+  if (INLINE_ASSET_EXTENSIONS.has(extension)) {
+    response.setHeader("Content-Type", getContentType(pathname));
+    response.setHeader("Content-Disposition", "inline");
+  }
+
+  next();
 }
 
 async function serveLocalAsset(rootDir, request, response, next) {
@@ -399,6 +413,7 @@ function localModelPresetPlugin() {
   return {
     name: "local-companion-dev-services",
     configureServer(server) {
+      server.middlewares.use(setInlineAssetHeaders);
       server.middlewares.use("/local-model-presets.json", async (_request, response) => {
         try {
           const modelPresets = await discoverModelPresets(server.config.root);
@@ -431,6 +446,7 @@ function localModelPresetPlugin() {
       });
     },
     configurePreviewServer(server) {
+      server.middlewares.use(setInlineAssetHeaders);
       server.middlewares.use((request, response, next) => {
         serveLocalAsset(process.cwd(), request, response, next).catch((error) => {
           sendJson(response, 500, {
