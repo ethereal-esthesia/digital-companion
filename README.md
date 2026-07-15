@@ -5,6 +5,7 @@
 **SoulEcho** aims to bring interactive 3D characters to the desktop, local applications, and eventually online experiences.
 
 The long-term goal is to support expressive companions that can:
+
 - Load **VRM** and **PMX** characters.
 - Animate, emote, and react in real time.
 - Interact with desktop applications.
@@ -93,12 +94,12 @@ Planned supported formats include:
 - [ ] VMD animation playback
 - [ ] Physics improvements
 - [ ] Companion behavior system
-- [ ] AI integration
+- [x] AI integration
 - [ ] Voice synthesis
 - [ ] Desktop interaction
 - [ ] Plugin system
 - [ ] Asset manager
-- [ ] Online companion server
+- [x] Online companion server
 - [ ] Cross-platform releases
 
 ---
