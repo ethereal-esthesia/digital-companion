@@ -147,6 +147,13 @@ const IDLE_BREATHE_MOTION_ID = "idle-breathe";
 const IDLE_INTERLUDE_MIN_SECONDS = 18;
 const IDLE_INTERLUDE_MAX_SECONDS = 38;
 const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
+const MOTION_TRANSITION_MIN_SECONDS = 0.2;
+const MOTION_TRANSITION_LINEAR_MAX_SPEED = 0.35;
+const MOTION_TRANSITION_LINEAR_ACCELERATION = 1.4;
+const MOTION_TRANSITION_LINEAR_DECELERATION = 1.4;
+const MOTION_TRANSITION_ANGULAR_MAX_SPEED = THREE.MathUtils.degToRad(150);
+const MOTION_TRANSITION_ANGULAR_ACCELERATION = THREE.MathUtils.degToRad(560);
+const MOTION_TRANSITION_ANGULAR_DECELERATION = THREE.MathUtils.degToRad(560);
 const PROCEDURAL_MOTION_OPTIONS = [
   {
     id: IDLE_BREATHE_MOTION_ID,
@@ -271,7 +278,8 @@ const motionController = {
   idleInterludeLoadingId: null,
   idleInterludeClock: 0,
   idleInterludeNextAt: BREATHE_LOOP_SECONDS,
-  idleInterludeStartupPending: true
+  idleInterludeStartupPending: true,
+  poseTransition: null
 };
 const dialogueController = {
   messages: loadCompanionContext(),
@@ -1737,6 +1745,14 @@ function resetIdleInterludeSchedule({ startup = true } = {}) {
 }
 
 function getIdleInterludeState() {
+  if (motionController.poseTransition?.phase === "idle-interlude-in") {
+    return "transitioning-in";
+  }
+
+  if (motionController.poseTransition?.phase === "idle-interlude-out") {
+    return "transitioning-out";
+  }
+
   if (motionController.idleInterludeAction) {
     return "playing";
   }
@@ -1752,19 +1768,38 @@ function getMotionPlaybackState() {
   const selectedOption = getMotionModeOption(modelPreviewOptions.motion);
   const interludeOption = getProceduralBaseMotionOption();
   const interludeState = getIdleInterludeState();
+  const transition = motionController.poseTransition;
+  const transitionOption = transition?.targetId
+    ? getMotionModeOption(transition.targetId)
+    : null;
   const isInterludeActive = Boolean(
     interludeOption &&
     selectedOption.id === IDLE_BREATHE_MOTION_ID &&
-    (interludeState === "loading" || interludeState === "playing")
+    (
+      interludeState === "loading" ||
+      interludeState === "playing" ||
+      interludeState === "transitioning-in"
+    )
   );
-  const effectiveOption = isInterludeActive ? interludeOption : selectedOption;
+  const effectiveOption = transition
+    ? {
+        id: transition.targetId || transitionOption?.id || selectedOption.id,
+        label: transition.targetLabel || transitionOption?.label || selectedOption.label
+      }
+    : isInterludeActive
+      ? interludeOption
+      : selectedOption;
 
   return {
     selectedId: selectedOption.id,
     selectedLabel: selectedOption.label,
     effectiveId: effectiveOption.id,
     effectiveLabel: effectiveOption.label,
-    effectiveStatus: isInterludeActive ? interludeState : motionController.status,
+    effectiveStatus: transition
+      ? transition.phase
+      : isInterludeActive
+        ? interludeState
+        : motionController.status,
     interludeId: interludeOption?.id || "",
     interludeLabel: interludeOption?.label || "",
     interludeState,
@@ -1778,6 +1813,14 @@ function getMotionPlaybackState() {
 
 function getMotionStatusSummary() {
   const motionState = getMotionPlaybackState();
+
+  if (motionState.interludeState === "transitioning-out") {
+    return `${motionState.selectedLabel} (transitioning from ${motionState.interludeLabel})`;
+  }
+
+  if (motionController.poseTransition && !motionState.isInterludeActive) {
+    return `${motionState.effectiveLabel} (${motionState.effectiveStatus})`;
+  }
 
   if (!motionState.isInterludeActive) {
     return motionState.selectedLabel;
@@ -1846,21 +1889,11 @@ function restoreManualExpressionSelections() {
 function resetLoadedModelMotion({ resetExpressions = true } = {}) {
   motionController.loadingId = null;
   motionController.idleInterludeLoadingId = null;
+  clearPoseTransition();
   stopIdleInterlude();
   resetIdleInterludeSchedule();
 
-  if (motionController.action) {
-    motionController.action.stop();
-    motionController.action = null;
-  }
-
-  if (motionController.mixer && activeVrm?.scene) {
-    motionController.mixer.stopAllAction();
-    motionController.mixer.uncacheRoot(activeVrm.scene);
-  }
-
-  motionController.mixer = null;
-  motionController.clip = null;
+  stopLoadedMotionPlayback();
   motionController.status = "idle";
   motionController.error = "";
   motionController.proceduralTime = 0;
@@ -1942,6 +1975,185 @@ function cloneNormalizedPose(pose = {}) {
       clonePoseTransform(transform)
     ])
   );
+}
+
+function getCurrentNormalizedPose() {
+  if (!activeVrm?.humanoid?.getNormalizedPose) {
+    return {};
+  }
+
+  return cloneNormalizedPose(activeVrm.humanoid.getNormalizedPose());
+}
+
+function applyNormalizedPose(pose = {}) {
+  if (!activeVrm?.humanoid) {
+    return;
+  }
+
+  activeVrm.humanoid.resetNormalizedPose?.();
+  activeVrm.humanoid.setNormalizedPose?.(pose);
+  activeVrm.update?.(0);
+}
+
+function getPosePosition(transform = {}) {
+  return Array.isArray(transform.position)
+    ? new THREE.Vector3().fromArray(transform.position)
+    : new THREE.Vector3();
+}
+
+function getPoseRotation(transform = {}) {
+  return Array.isArray(transform.rotation)
+    ? new THREE.Quaternion().fromArray(transform.rotation).normalize()
+    : new THREE.Quaternion();
+}
+
+function getMotionPlan(distance, maxSpeed, acceleration, deceleration) {
+  if (distance <= 1e-6) {
+    return {
+      distance: 0,
+      duration: 0,
+      sample: () => 1
+    };
+  }
+
+  const safeMaxSpeed = Math.max(maxSpeed, 1e-6);
+  const safeAcceleration = Math.max(acceleration, 1e-6);
+  const safeDeceleration = Math.max(deceleration, 1e-6);
+  const accelDistance = (safeMaxSpeed * safeMaxSpeed) / (2 * safeAcceleration);
+  const decelDistance = (safeMaxSpeed * safeMaxSpeed) / (2 * safeDeceleration);
+
+  let peakSpeed = safeMaxSpeed;
+  let cruiseDistance = distance - accelDistance - decelDistance;
+  if (cruiseDistance < 0) {
+    peakSpeed = Math.sqrt(
+      (2 * distance * safeAcceleration * safeDeceleration) /
+      (safeAcceleration + safeDeceleration)
+    );
+    cruiseDistance = 0;
+  }
+
+  const accelTime = peakSpeed / safeAcceleration;
+  const decelTime = peakSpeed / safeDeceleration;
+  const cruiseTime = cruiseDistance / peakSpeed;
+  const actualAccelDistance = (peakSpeed * peakSpeed) / (2 * safeAcceleration);
+  const duration = accelTime + cruiseTime + decelTime;
+
+  return {
+    distance,
+    duration,
+    sample: (elapsed) => {
+      if (elapsed <= 0) {
+        return 0;
+      }
+
+      if (elapsed >= duration) {
+        return 1;
+      }
+
+      let coveredDistance;
+      if (elapsed < accelTime) {
+        coveredDistance = 0.5 * safeAcceleration * elapsed * elapsed;
+      } else if (elapsed < accelTime + cruiseTime) {
+        coveredDistance = actualAccelDistance + peakSpeed * (elapsed - accelTime);
+      } else {
+        const decelElapsed = elapsed - accelTime - cruiseTime;
+        coveredDistance =
+          actualAccelDistance +
+          cruiseDistance +
+          peakSpeed * decelElapsed -
+          0.5 * safeDeceleration * decelElapsed * decelElapsed;
+      }
+
+      return THREE.MathUtils.clamp(coveredDistance / distance, 0, 1);
+    }
+  };
+}
+
+function getLinearTransitionPlan(distance) {
+  return getMotionPlan(
+    distance,
+    MOTION_TRANSITION_LINEAR_MAX_SPEED,
+    MOTION_TRANSITION_LINEAR_ACCELERATION,
+    MOTION_TRANSITION_LINEAR_DECELERATION
+  );
+}
+
+function getAngularTransitionPlan(angle) {
+  return getMotionPlan(
+    angle,
+    MOTION_TRANSITION_ANGULAR_MAX_SPEED,
+    MOTION_TRANSITION_ANGULAR_ACCELERATION,
+    MOTION_TRANSITION_ANGULAR_DECELERATION
+  );
+}
+
+function createPoseTransitionTrack(boneName, fromTransform = {}, toTransform = {}) {
+  const fromPosition = getPosePosition(fromTransform);
+  const toPosition = getPosePosition(toTransform);
+  const fromRotation = getPoseRotation(fromTransform);
+  const toRotation = getPoseRotation(toTransform);
+  if (fromRotation.dot(toRotation) < 0) {
+    toRotation.set(-toRotation.x, -toRotation.y, -toRotation.z, -toRotation.w);
+  }
+
+  const positionPlan = getLinearTransitionPlan(fromPosition.distanceTo(toPosition));
+  const rotationPlan = getAngularTransitionPlan(fromRotation.angleTo(toRotation));
+
+  return {
+    boneName,
+    fromPosition,
+    toPosition,
+    positionPlan,
+    fromRotation,
+    toRotation,
+    rotationPlan,
+    duration: Math.max(positionPlan.duration, rotationPlan.duration)
+  };
+}
+
+function createPoseTransition(fromPose = {}, toPose = {}, options = {}) {
+  const boneNames = new Set([
+    ...Object.keys(fromPose),
+    ...Object.keys(toPose)
+  ]);
+  const tracks = [...boneNames].map((boneName) => (
+    createPoseTransitionTrack(boneName, fromPose[boneName], toPose[boneName])
+  ));
+  const duration = Math.max(
+    MOTION_TRANSITION_MIN_SECONDS,
+    ...tracks.map((track) => track.duration)
+  );
+
+  return {
+    elapsed: 0,
+    duration,
+    tracks,
+    targetId: options.targetId || "",
+    targetLabel: options.targetLabel || "",
+    phase: options.phase || "transitioning",
+    onComplete: options.onComplete || null
+  };
+}
+
+function samplePoseTransition(transition, elapsed) {
+  const pose = {};
+
+  transition.tracks.forEach((track) => {
+    const transform = {};
+    const positionProgress = track.positionPlan.sample(elapsed);
+    const rotationProgress = track.rotationPlan.sample(elapsed);
+    transform.position = track.fromPosition.clone().lerp(
+      track.toPosition,
+      positionProgress
+    ).toArray();
+    transform.rotation = track.fromRotation.clone().slerp(
+      track.toRotation,
+      rotationProgress
+    ).toArray();
+    pose[track.boneName] = transform;
+  });
+
+  return pose;
 }
 
 function getProceduralBaseMotionOption() {
@@ -2110,6 +2322,38 @@ function buildProceduralPose(mode, t, basePose = {}) {
   return cloneNormalizedPose(basePose);
 }
 
+function clearPoseTransition() {
+  motionController.poseTransition = null;
+}
+
+function startPoseTransition(fromPose, toPose, options = {}) {
+  motionController.poseTransition = createPoseTransition(fromPose, toPose, options);
+  applyNormalizedPose(samplePoseTransition(motionController.poseTransition, 0));
+}
+
+function updatePoseTransition(delta) {
+  const transition = motionController.poseTransition;
+  if (!transition) {
+    return false;
+  }
+
+  transition.elapsed += Math.max(0, delta);
+  applyNormalizedPose(samplePoseTransition(transition, transition.elapsed));
+
+  if (transition.elapsed < transition.duration) {
+    motionController.status = "transitioning";
+    motionController.error = "";
+    return true;
+  }
+
+  const onComplete = transition.onComplete;
+  clearPoseTransition();
+  motionController.status = "playing";
+  motionController.error = "";
+  onComplete?.();
+  return true;
+}
+
 function stopIdleInterlude() {
   if (
     motionController.idleInterludeMixer &&
@@ -2133,13 +2377,91 @@ function stopIdleInterlude() {
   motionController.idleInterludeFinishHandler = null;
 }
 
+function stopLoadedMotionPlayback() {
+  if (motionController.action) {
+    motionController.action.stop();
+    motionController.action = null;
+  }
+
+  if (motionController.mixer && activeVrm?.scene) {
+    motionController.mixer.stopAllAction();
+    motionController.mixer.uncacheRoot(activeVrm.scene);
+  }
+
+  motionController.mixer = null;
+  motionController.clip = null;
+}
+
+function holdPoseForTransition(pose) {
+  stopLoadedMotionPlayback();
+  stopIdleInterlude();
+  applyNormalizedPose(pose);
+}
+
+function prepareMotionChangeForTransition(fromPose, targetOption) {
+  motionController.loadingId = null;
+  motionController.idleInterludeLoadingId = null;
+  clearPoseTransition();
+  stopLoadedMotionPlayback();
+  stopIdleInterlude();
+  resetIdleInterludeSchedule({ startup: targetOption?.id === IDLE_BREATHE_MOTION_ID });
+  motionController.proceduralTime = 0;
+  motionController.proceduralBasePose = null;
+  motionController.proceduralBasePoseKey = "";
+  motionController.proceduralBasePosePromise = null;
+  applyNormalizedPose(fromPose);
+}
+
+function startLoopingVrmClip(clip) {
+  if (!activeVrm?.scene) {
+    return;
+  }
+
+  activeVrm.humanoid?.resetNormalizedPose?.();
+  motionController.mixer = new THREE.AnimationMixer(activeVrm.scene);
+  motionController.clip = clip;
+  motionController.action = motionController.mixer.clipAction(clip);
+  motionController.action.reset();
+  motionController.action.setLoop(THREE.LoopRepeat, Infinity);
+  motionController.action.play();
+  motionController.status = "playing";
+  motionController.error = "";
+}
+
+function startIdleInterludeClip(clip) {
+  if (!activeVrm?.scene) {
+    return;
+  }
+
+  const mixer = new THREE.AnimationMixer(activeVrm.scene);
+  const action = mixer.clipAction(clip);
+  const finishHandler = (event) => {
+    if (event.action === action) {
+      finishIdleInterlude();
+    }
+  };
+
+  mixer.addEventListener("finished", finishHandler);
+  action.reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+
+  motionController.idleInterludeMixer = mixer;
+  motionController.idleInterludeAction = action;
+  motionController.idleInterludeFinishHandler = finishHandler;
+  motionController.status = "playing";
+  motionController.error = "";
+  updateLocalModelDebug();
+  updateModelAssetStatus();
+}
+
 function applyCurrentProceduralPose() {
   if (!activeVrm?.humanoid || !motionController.proceduralBasePose) {
     return;
   }
 
-  activeVrm.humanoid.resetNormalizedPose?.();
-  activeVrm.humanoid.setNormalizedPose?.(
+  applyNormalizedPose(
     buildProceduralPose(
       modelPreviewOptions.motion,
       motionController.proceduralTime,
@@ -2149,10 +2471,25 @@ function applyCurrentProceduralPose() {
 }
 
 function finishIdleInterlude() {
+  const fromPose = getCurrentNormalizedPose();
   stopIdleInterlude();
   motionController.proceduralTime = 0;
   resetIdleInterludeSchedule({ startup: false });
-  applyCurrentProceduralPose();
+  const targetPose = buildProceduralPose(
+    modelPreviewOptions.motion,
+    motionController.proceduralTime,
+    motionController.proceduralBasePose
+  );
+  startPoseTransition(fromPose, targetPose, {
+    targetId: modelPreviewOptions.motion,
+    targetLabel: getMotionModeLabel(modelPreviewOptions.motion),
+    phase: "idle-interlude-out",
+    onComplete: () => {
+      applyCurrentProceduralPose();
+      updateLocalModelDebug();
+      updateModelAssetStatus();
+    }
+  });
   updateLocalModelDebug();
   updateModelAssetStatus();
 }
@@ -2187,27 +2524,16 @@ async function startIdleInterlude() {
     }
 
     motionController.idleInterludeLoadingId = null;
-    stopIdleInterlude();
+    const fromPose = getCurrentNormalizedPose();
+    const targetPose = cloneNormalizedPose(motionController.proceduralBasePose);
+    holdPoseForTransition(fromPose);
     motionController.proceduralTime = 0;
-    applyCurrentProceduralPose();
-
-    const mixer = new THREE.AnimationMixer(activeVrm.scene);
-    const action = mixer.clipAction(clip);
-    const finishHandler = (event) => {
-      if (event.action === action) {
-        finishIdleInterlude();
-      }
-    };
-
-    mixer.addEventListener("finished", finishHandler);
-    action.reset();
-    action.setLoop(THREE.LoopOnce, 1);
-    action.clampWhenFinished = false;
-    action.play();
-
-    motionController.idleInterludeMixer = mixer;
-    motionController.idleInterludeAction = action;
-    motionController.idleInterludeFinishHandler = finishHandler;
+    startPoseTransition(fromPose, targetPose, {
+      targetId: interludeOption.id,
+      targetLabel: interludeOption.label,
+      phase: "idle-interlude-in",
+      onComplete: () => startIdleInterludeClip(clip)
+    });
     updateLocalModelDebug();
     updateModelAssetStatus();
   } catch (error) {
@@ -2239,6 +2565,7 @@ function updateIdleInterludeSchedule(delta) {
   if (
     delta <= 0 ||
     modelPreviewOptions.motion !== IDLE_BREATHE_MOTION_ID ||
+    motionController.poseTransition ||
     motionController.idleInterludeAction ||
     motionController.idleInterludeLoadingId ||
     !getProceduralBaseMotionOption()
@@ -2291,7 +2618,15 @@ function applyProceduralVrmMotion(delta) {
 
 async function applyLoadedModelMotion() {
   const option = getMotionModeOption(modelPreviewOptions.motion);
-  resetLoadedModelMotion();
+  const fromPose = getCurrentNormalizedPose();
+
+  if (!activeVrm?.humanoid) {
+    resetLoadedModelMotion();
+    refreshModelPreview();
+    return;
+  }
+
+  prepareMotionChangeForTransition(fromPose, option);
 
   if (isProceduralMotionOption(option) && activeVrm?.humanoid) {
     motionController.status = "loading";
@@ -2308,10 +2643,20 @@ async function applyLoadedModelMotion() {
       }
 
       motionController.proceduralBasePose = basePose;
-      activeVrm.humanoid.resetNormalizedPose?.();
-      activeVrm.humanoid.setNormalizedPose?.(buildProceduralPose(option.id, 0, basePose));
-      motionController.status = "playing";
-      motionController.error = "";
+      const targetPose = buildProceduralPose(option.id, 0, basePose);
+      startPoseTransition(fromPose, targetPose, {
+        targetId: option.id,
+        targetLabel: option.label,
+        phase: "transitioning",
+        onComplete: () => {
+          motionController.proceduralTime = 0;
+          applyCurrentProceduralPose();
+          motionController.status = "playing";
+          motionController.error = "";
+          updateLocalModelDebug();
+          updateModelAssetStatus();
+        }
+      });
     } catch (error) {
       if (motionController.loadingId !== loadingId) {
         return;
@@ -2332,6 +2677,18 @@ async function applyLoadedModelMotion() {
   }
 
   if (option.id === STILL_MOTION_ID || !activeVrm?.scene) {
+    startPoseTransition(fromPose, {}, {
+      targetId: STILL_MOTION_ID,
+      targetLabel: STILL_MOTION_OPTION.label,
+      phase: "transitioning",
+      onComplete: () => {
+        activeVrm?.humanoid?.resetNormalizedPose?.();
+        motionController.status = "idle";
+        motionController.error = "";
+        updateLocalModelDebug();
+        updateModelAssetStatus();
+      }
+    });
     refreshModelPreview();
     return;
   }
@@ -2349,15 +2706,21 @@ async function applyLoadedModelMotion() {
       return;
     }
 
-    activeVrm.humanoid?.resetNormalizedPose?.();
-    motionController.mixer = new THREE.AnimationMixer(activeVrm.scene);
-    motionController.clip = clip;
-    motionController.action = motionController.mixer.clipAction(clip);
-    motionController.action.reset();
-    motionController.action.setLoop(THREE.LoopRepeat, Infinity);
-    motionController.action.play();
-    motionController.status = "playing";
-    motionController.error = "";
+    const targetPose = await sampleMotionFirstFramePose(option);
+    if (motionController.loadingId !== loadingId || modelPreviewOptions.motion !== option.id) {
+      return;
+    }
+
+    startPoseTransition(fromPose, targetPose, {
+      targetId: option.id,
+      targetLabel: option.label,
+      phase: "transitioning",
+      onComplete: () => {
+        startLoopingVrmClip(clip);
+        updateLocalModelDebug();
+        updateModelAssetStatus();
+      }
+    });
   } catch (error) {
     if (motionController.loadingId !== loadingId) {
       return;
@@ -2377,6 +2740,10 @@ async function applyLoadedModelMotion() {
 }
 
 function updateLoadedModelMotion(delta) {
+  if (updatePoseTransition(delta)) {
+    return;
+  }
+
   if (applyProceduralVrmMotion(delta)) {
     return;
   }
