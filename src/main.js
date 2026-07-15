@@ -2616,35 +2616,35 @@ function addRelaxedFingerCurl(pose, side) {
   addPoseRotationDelta(
     pose,
     `${side}ThumbMetacarpal`,
-    THREE.MathUtils.degToRad(4),
-    THREE.MathUtils.degToRad(6 * sideDirection),
-    THREE.MathUtils.degToRad(-6 * sideDirection)
+    THREE.MathUtils.degToRad(3),
+    THREE.MathUtils.degToRad(4 * sideDirection),
+    THREE.MathUtils.degToRad(-4 * sideDirection)
   );
-  addPoseRotationDelta(pose, `${side}ThumbProximal`, THREE.MathUtils.degToRad(8), 0, 0);
-  addPoseRotationDelta(pose, `${side}ThumbDistal`, THREE.MathUtils.degToRad(5), 0, 0);
+  addPoseRotationDelta(pose, `${side}ThumbProximal`, THREE.MathUtils.degToRad(5), 0, 0);
+  addPoseRotationDelta(pose, `${side}ThumbDistal`, THREE.MathUtils.degToRad(3), 0, 0);
 
   fingers.forEach((finger, index) => {
-    const curl = finger === "Middle" || finger === "Ring" ? 1 : 0.82;
-    const spread = (index - 1.5) * 1.4 * sideDirection;
+    const curl = finger === "Middle" || finger === "Ring" ? 0.68 : 0.54;
+    const spread = (index - 1.5) * 1 * sideDirection;
 
     addPoseRotationDelta(
       pose,
       `${side}${finger}Proximal`,
-      THREE.MathUtils.degToRad(10 * curl),
+      THREE.MathUtils.degToRad(8 * curl),
       THREE.MathUtils.degToRad(spread),
       0
     );
     addPoseRotationDelta(
       pose,
       `${side}${finger}Intermediate`,
-      THREE.MathUtils.degToRad(14 * curl),
+      THREE.MathUtils.degToRad(10 * curl),
       0,
       0
     );
     addPoseRotationDelta(
       pose,
       `${side}${finger}Distal`,
-      THREE.MathUtils.degToRad(7 * curl),
+      THREE.MathUtils.degToRad(5 * curl),
       0,
       0
     );
