@@ -144,6 +144,7 @@ const STILL_MOTION_OPTION = {
 const PROCEDURAL_BASE_MOTION_ID = "vroid-show-full-body";
 const BREATHE_LOOP_SECONDS = 4.2;
 const IDLE_BREATHE_MOTION_ID = "idle-breathe";
+const GREETING_WAVE_MOTION_ID = "greeting-wave";
 const IDLE_INTERLUDE_MIN_SECONDS = 18;
 const IDLE_INTERLUDE_MAX_SECONDS = 38;
 const IDLE_INTERLUDE_NEUTRAL_THRESHOLD = 0.08;
@@ -158,6 +159,12 @@ const PROCEDURAL_MOTION_OPTIONS = [
   {
     id: IDLE_BREATHE_MOTION_ID,
     label: "Idle breathe",
+    kind: "procedural",
+    ok: true
+  },
+  {
+    id: GREETING_WAVE_MOTION_ID,
+    label: "Greeting wave",
     kind: "procedural",
     ok: true
   }
@@ -294,7 +301,10 @@ const speechController = {
 const demoScheduler = {
   timers: [],
   events: [],
-  startedAt: 0
+  startedAt: 0,
+  state: "idle",
+  lastEvent: "",
+  nextEvent: ""
 };
 
 const scene = new THREE.Scene();
@@ -972,21 +982,71 @@ function normalizeSchedulerEvent(event, index) {
   return null;
 }
 
+function formatSchedulerEventLabel(event) {
+  if (!event) {
+    return "";
+  }
+
+  if (event.type === "motion") {
+    return `motion:${event.motion}`;
+  }
+
+  if (event.type === "speech") {
+    return "speech";
+  }
+
+  return event.type;
+}
+
+function updateDemoSchedulerStatus(state = demoScheduler.state) {
+  const elapsed = demoScheduler.startedAt > 0
+    ? performance.now() - demoScheduler.startedAt
+    : 0;
+  const nextEvent = demoScheduler.events.find((event) => event.at * 1000 > elapsed);
+  const schedulerState = state === "running" && !nextEvent && demoScheduler.lastEvent
+    ? "complete"
+    : state;
+
+  demoScheduler.state = schedulerState;
+  demoScheduler.nextEvent = formatSchedulerEventLabel(nextEvent);
+
+  document.documentElement.dataset.demoSchedulerState = schedulerState;
+  document.documentElement.dataset.demoSchedulerLast = demoScheduler.lastEvent;
+  document.documentElement.dataset.demoSchedulerNext = demoScheduler.nextEvent;
+
+  if (window.localModelDebug) {
+    window.localModelDebug.demoScheduler = {
+      state: demoScheduler.state,
+      lastEvent: demoScheduler.lastEvent,
+      nextEvent: demoScheduler.nextEvent,
+      eventCount: demoScheduler.events.length
+    };
+  }
+}
+
 function stopDemoScheduler() {
   demoScheduler.timers.forEach((timer) => {
     window.clearTimeout(timer);
   });
   demoScheduler.timers = [];
+  demoScheduler.lastEvent = "";
+  demoScheduler.nextEvent = "";
+  updateDemoSchedulerStatus("idle");
 }
 
 function runSchedulerEvent(event) {
+  demoScheduler.lastEvent = formatSchedulerEventLabel(event);
+  updateDemoSchedulerStatus("running");
+
   if (event.type === "motion") {
     setMotionMode(event.motion, false);
+    updateDemoSchedulerStatus("running");
     return;
   }
 
   if (event.type === "speech") {
     showSpeechPhrase(event.text);
+    updateDemoSchedulerStatus("running");
   }
 }
 
@@ -995,6 +1055,7 @@ function startDemoScheduler(config = {}) {
   const scheduler = getSchedulerConfig(config);
   if (!scheduler.enabled || scheduler.events.length === 0) {
     demoScheduler.events = [];
+    updateDemoSchedulerStatus(scheduler.enabled ? "empty" : "disabled");
     return;
   }
 
@@ -1004,12 +1065,18 @@ function startDemoScheduler(config = {}) {
     .filter(Boolean)
     .sort((a, b) => a.at - b.at);
 
+  if (demoScheduler.events.length === 0) {
+    updateDemoSchedulerStatus("empty");
+    return;
+  }
+
   demoScheduler.timers = demoScheduler.events.map((event) =>
     window.setTimeout(() => {
       runSchedulerEvent(event);
     }, event.at * 1000)
   );
   window.demoScheduler = demoScheduler;
+  updateDemoSchedulerStatus("scheduled");
 }
 
 function getDefaultUserProfile() {
@@ -2416,9 +2483,94 @@ function buildBreathePose(basePose, t) {
   return pose;
 }
 
+function buildGreetingWavePose(basePose, t) {
+  const pose = buildBreathePose(basePose, t);
+  const wave = getLoopSine(t, 1.2);
+  const sway = getLoopSine(t, BREATHE_LOOP_SECONDS);
+
+  addPoseRotationDelta(pose, "spine", 0, THREE.MathUtils.degToRad(-2.5), 0);
+  addPoseRotationDelta(
+    pose,
+    "chest",
+    THREE.MathUtils.degToRad(-1.5),
+    THREE.MathUtils.degToRad(-4),
+    0
+  );
+  addPoseRotationDelta(
+    pose,
+    "upperChest",
+    THREE.MathUtils.degToRad(-2),
+    THREE.MathUtils.degToRad(-6),
+    0
+  );
+  addPoseRotationDelta(
+    pose,
+    "neck",
+    THREE.MathUtils.degToRad(1.2),
+    THREE.MathUtils.degToRad(4),
+    0
+  );
+  addPoseRotationDelta(
+    pose,
+    "head",
+    THREE.MathUtils.degToRad(2),
+    THREE.MathUtils.degToRad(5),
+    THREE.MathUtils.degToRad(1.4 * sway)
+  );
+
+  addPoseRotationDelta(
+    pose,
+    "leftUpperArm",
+    0,
+    THREE.MathUtils.degToRad(-4),
+    THREE.MathUtils.degToRad(6)
+  );
+  addPoseRotationDelta(
+    pose,
+    "leftLowerArm",
+    THREE.MathUtils.degToRad(4),
+    0,
+    THREE.MathUtils.degToRad(8)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightShoulder",
+    0,
+    THREE.MathUtils.degToRad(-6),
+    THREE.MathUtils.degToRad(-8)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightUpperArm",
+    THREE.MathUtils.degToRad(-10),
+    THREE.MathUtils.degToRad(18),
+    THREE.MathUtils.degToRad(-72)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightLowerArm",
+    THREE.MathUtils.degToRad(-18),
+    THREE.MathUtils.degToRad(10),
+    THREE.MathUtils.degToRad(-58)
+  );
+  addPoseRotationDelta(
+    pose,
+    "rightHand",
+    0,
+    THREE.MathUtils.degToRad(10 + 18 * wave),
+    THREE.MathUtils.degToRad(-8 * wave)
+  );
+
+  return pose;
+}
+
 function buildProceduralPose(mode, t, basePose = {}) {
   if (mode === IDLE_BREATHE_MOTION_ID) {
     return buildBreathePose(basePose, t);
+  }
+
+  if (mode === GREETING_WAVE_MOTION_ID) {
+    return buildGreetingWavePose(basePose, t);
   }
 
   return cloneNormalizedPose(basePose);
