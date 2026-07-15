@@ -926,7 +926,10 @@ function hasScheduledSpeech(config = {}) {
   const scheduler = getSchedulerConfig(config);
   return (
     scheduler.enabled &&
-    scheduler.events.some((event, index) => normalizeSchedulerEvent(event, index)?.type === "speech")
+    scheduler.events.some((event, index) => {
+      const normalizedEvent = normalizeSchedulerEvent(event, index);
+      return normalizedEvent?.type === "speech" || normalizedEvent?.type === "command";
+    })
   );
 }
 
@@ -972,6 +975,11 @@ function normalizeSchedulerEvent(event, index) {
     return text ? { at, type: "speech", text } : null;
   }
 
+  if (type === "command" || event.command) {
+    const command = String(event.command || event.id || event.value || "").trim().replace(/^\/+/, "");
+    return command ? { at, type: "command", command } : null;
+  }
+
   return null;
 }
 
@@ -986,6 +994,10 @@ function formatSchedulerEventLabel(event) {
 
   if (event.type === "speech") {
     return "speech";
+  }
+
+  if (event.type === "command") {
+    return `command:${event.command}`;
   }
 
   return event.type;
@@ -1038,7 +1050,13 @@ function runSchedulerEvent(event) {
   }
 
   if (event.type === "speech") {
-    showSpeechPhrase(event.text);
+    addAssistantDialogueReply(event.text);
+    updateDemoSchedulerStatus("running");
+    return;
+  }
+
+  if (event.type === "command") {
+    runSchedulerCommand(event.command);
     updateDemoSchedulerStatus("running");
   }
 }
@@ -1642,6 +1660,66 @@ function addDialogueLine(role, content) {
   renderDialogueHistory();
 }
 
+function getLastDialogueLine(role) {
+  for (let index = dialogueController.messages.length - 1; index >= 0; index -= 1) {
+    const message = dialogueController.messages[index];
+    if (message.role === role) {
+      return message;
+    }
+  }
+  return null;
+}
+
+function addAssistantDialogueReply(reply, options = {}) {
+  const cleanReply = reply.trim();
+  if (!cleanReply) {
+    return;
+  }
+  if (options.dedupeRecent && getLastDialogueLine("assistant")?.content === cleanReply) {
+    showSpeechPhrase(cleanReply);
+    return;
+  }
+  addDialogueLine("assistant", cleanReply);
+  showSpeechPhrase(cleanReply);
+}
+
+function hasStoredCompanionMemory() {
+  const profile = dialogueController.memory.profile;
+  return (
+    dialogueController.messages.some((message) => message.role === "user" || message.role === "assistant") ||
+    dialogueController.memory.user.length > 0 ||
+    dialogueController.memory.website.length > 0 ||
+    profile.userName !== DEFAULT_USER_PROFILE.userName ||
+    profile.interests.length > 0 ||
+    Boolean(profile.lastVibe)
+  );
+}
+
+function getContinuationGreeting() {
+  const characterName = getCatchyCharacterName();
+  const profileName = dialogueController.memory.profile.userName;
+  const userName = profileName !== DEFAULT_USER_PROFILE.userName ? profileName : "";
+
+  if (hasStoredCompanionMemory()) {
+    return userName
+      ? `Welcome back, ${userName}. I still have our thread, so I'm picking up where we left off.`
+      : "Welcome back. I still have our thread, so I'm picking up where we left off.";
+  }
+
+  return `Hi, I'm ${characterName}. Thanks for giving me a second to wake up.`;
+}
+
+function runSchedulerCommand(command) {
+  const normalizedCommand = command.trim().toLowerCase();
+  if (normalizedCommand === "continue-greeting" || normalizedCommand === "continuation-greeting") {
+    addAssistantDialogueReply(getContinuationGreeting(), { dedupeRecent: true });
+    return true;
+  }
+
+  addDialogueLine("system", `Unknown scheduler command: ${command}`);
+  return false;
+}
+
 function shouldIncludeSavedMemory(prompt) {
   return /\b(?:remember|memory|know about me|about me|my favorite|my name|name|interest|interests|i like|i prefer|vibe|mood|website|site|page|project|docs|teach|learned)\b/i.test(prompt);
 }
@@ -1742,8 +1820,7 @@ async function submitDialoguePrompt(prompt) {
       addDialogueLine("system", `${OLLAMA_MODEL} returned an empty reply. Try again.`);
       return;
     }
-    addDialogueLine("assistant", reply);
-    showSpeechPhrase(reply);
+    addAssistantDialogueReply(reply);
   } catch (error) {
     dialogueController.messages = dialogueController.messages.filter(
       (message) => message.role !== "system" || message.content !== `${OLLAMA_MODEL} thinking`

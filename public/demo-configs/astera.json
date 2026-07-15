@@ -28,8 +28,8 @@
     "events": [
       {
         "at": 2.8,
-        "type": "text",
-        "text": "Hi, I'm Astera. Thanks for giving me a second to wake up."
+        "type": "command",
+        "command": "continue-greeting"
       }
     ]
   }
