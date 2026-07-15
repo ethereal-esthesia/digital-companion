@@ -78,7 +78,7 @@ prepare_project() {
   [[ -f "$APP_DIR/package.json" ]] || fail "Missing package.json in $APP_DIR"
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 
-  sudo -H -u "$APP_USER" npm --prefix "$APP_DIR" ci
+  sudo -H -u "$APP_USER" npm --prefix "$APP_DIR" ci --include=optional
   sudo -H -u "$APP_USER" env \
     SOULECHO_BASE_PATH="$SOULECHO_BASE_PATH" \
     npm --prefix "$APP_DIR" run demo:build -- "$DEMO_CONFIGURATION"
