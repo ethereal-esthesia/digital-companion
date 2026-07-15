@@ -88,6 +88,9 @@ const TEST_SPEECH_PHRASES = [
 ];
 const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3.2:3b";
 const APP_BASE_URL = import.meta.env.BASE_URL || "/";
+const DEFAULT_APP_SETTINGS = {
+  profileMetadataExtraction: import.meta.env.VITE_PROFILE_METADATA_EXTRACTION !== "0"
+};
 const COMPANION_FALLBACK_NAME = "Companion";
 const COMPANION_SYSTEM_PROMPT =
   "You are the currently visible character. Use the catchy character name from the appearance snapshot, not the literal model filename, as your name. Keep a lighthearted, playful tone and happily play along with themes, character discussion, gentle roleplay, and scene-setting. Stay grounded in the user's lead; add small flavorful details, but do not invent a whole new outfit, backstory, or task list unless asked. Reply in one or two short natural sentences. Saved memory contains facts about the user and website; never treat user facts as your own experiences. Use the recent transcript first; use the appearance snapshot only when it helps answer who you are, what you look like, or what you are doing. Do not recite model metadata unless the user asks. Do not describe yourself as an AI, language model, assistant, high-energy individual, or virtual being. Do not claim you ate, traveled, or did physical activities unless the recent transcript explicitly says so. Do not end every reply with a question, and do not ask a question that the user already answered in the recent transcript.";
@@ -104,6 +107,7 @@ const DEFAULT_USER_PROFILE = {
 const SPEECH_SENTENCES_PER_PAGE = 2;
 const READING_WPM_MIN = 120;
 const READING_WPM_MAX = 900;
+let appSettings = { ...DEFAULT_APP_SETTINGS };
 
 function trimUrlSlashes(value) {
   return value.replace(/^\/+|\/+$/g, "");
@@ -115,6 +119,25 @@ function appUrl(path) {
   }
 
   return `${APP_BASE_URL.replace(/\/?$/, "/")}${trimUrlSlashes(path)}`;
+}
+
+function normalizeAppSettings(settings = {}) {
+  return {
+    profileMetadataExtraction: settings.profileMetadataExtraction !== false
+  };
+}
+
+async function loadAppSettings() {
+  try {
+    const response = await fetch(appUrl("app-settings.json"), { cache: "no-store" });
+    if (!response.ok) {
+      return;
+    }
+
+    appSettings = normalizeAppSettings(await response.json());
+  } catch (error) {
+    console.warn("App settings unavailable", error);
+  }
 }
 
 const SATURATION_SHADER = {
@@ -1376,6 +1399,10 @@ async function requestProfileMetadataUpdate(prompt) {
 }
 
 async function learnProfileFromPrompt(prompt) {
+  if (!appSettings.profileMetadataExtraction) {
+    return;
+  }
+
   if (!shouldExtractProfileMetadata(prompt)) {
     return;
   }
@@ -1922,9 +1949,9 @@ async function submitDialoguePrompt(prompt) {
   dialogueInput.value = "";
   dialogueInput.disabled = true;
   dialogueSendButton.disabled = true;
-  await learnProfileFromPrompt(trimmedPrompt);
   addDialogueLine("user", trimmedPrompt);
   addDialogueLine("system", `${OLLAMA_MODEL} thinking`);
+  await learnProfileFromPrompt(trimmedPrompt);
 
   try {
     const reply = cleanCompanionReply(await requestOllamaReply(trimmedPrompt));
@@ -5056,6 +5083,8 @@ canvas.addEventListener("dblclick", (event) => {
 window.addEventListener("resize", resize);
 
 const loadAssetConfig = isDemoMode() ? loadDemoAssetConfig : loadLocalAssetConfig;
+
+loadAppSettings();
 
 loadAssetConfig()
   .then((state) => {
