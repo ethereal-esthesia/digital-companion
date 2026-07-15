@@ -11,6 +11,7 @@ const MODEL_EXTENSIONS = new Set([".pmx", ".pmd", ".vrm"]);
 const MOTION_EXTENSIONS = new Set([".vrma"]);
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const OLLAMA_CHAT_TIMEOUT_MS = Number(process.env.OLLAMA_CHAT_TIMEOUT_MS || 120000);
 const DEMO_PROFILE_PATH = "public/demo-profile.json";
 const DEMO_CONFIG_DIR = "public/demo-configs";
 const DEFAULT_DEMO_CONFIGURATION = "default";
@@ -310,7 +311,7 @@ async function handleOllamaChat(request, response) {
     const model = body.model || DEFAULT_OLLAMA_MODEL;
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
+    const timeout = setTimeout(() => controller.abort(), OLLAMA_CHAT_TIMEOUT_MS);
     let ollamaResponse;
 
     try {

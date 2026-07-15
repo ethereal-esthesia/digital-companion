@@ -1780,7 +1780,9 @@ async function requestContinuationGreeting() {
       includeSavedMemory: true,
       transcriptLines: PERSISTED_CONTEXT_LINES,
       currentTurnGuidance: "The app just started. Write only Astera's brief continuation greeting using the full prior chat context.",
-      appendPrompt: true
+      appendPrompt: true,
+      retryCount: 1,
+      retryDelayMs: 10000
     }
   ));
   return reply || getContinuationGreeting();
@@ -1851,29 +1853,50 @@ function cleanCompanionReply(reply) {
   return reply.trim().replace(/^["“](.*)["”]$/s, "$1").trim();
 }
 
-async function requestOllamaReply(prompt, options = {}) {
-  const response = await fetch(appUrl("ollama-chat"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      messages: options.appendPrompt
-        ? [
-            ...getOllamaMessages(prompt, options),
-            { role: "user", content: prompt }
-          ]
-        : getOllamaMessages(prompt, options)
-    })
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
   });
+}
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `Ollama returned ${response.status}`);
+async function requestOllamaReply(prompt, options = {}) {
+  const retryCount = Math.max(0, options.retryCount || 0);
+  let lastError;
+
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    if (attempt > 0) {
+      await wait(options.retryDelayMs || 10000);
+    }
+
+    try {
+      const response = await fetch(appUrl("ollama-chat"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          messages: options.appendPrompt
+            ? [
+                ...getOllamaMessages(prompt, options),
+                { role: "user", content: prompt }
+              ]
+            : getOllamaMessages(prompt, options)
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `Ollama returned ${response.status}`);
+      }
+
+      return payload.message || "";
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return payload.message || "";
+  throw lastError;
 }
 
 async function submitDialoguePrompt(prompt) {
